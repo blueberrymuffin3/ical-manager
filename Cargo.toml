@@ -1,0 +1,25 @@
+[package]
+name = "ical-manager"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+async-trait = "0.1.73"
+axum = { version = "0.6.20", features = ["macros"] }
+chrono = "0.4.26"
+dotenvy = "0.15.7"
+env_logger = "0.10.0"
+humantime = "2.1.0"
+icondata = { version = "0.0.7", features = ["LuCopy", "LuEdit", "LuRefreshCw"] }
+log = "0.4.20"
+maud = { version = "0.25.0", features = ["axum"] }
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.105"
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
+strum = { version = "0.25.0", features = ["derive"] }
+tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
+tower-http = { version = "0.4.3", features = ["fs"] }
+uuid = { version = "1.4.1", features = ["v4"] }
