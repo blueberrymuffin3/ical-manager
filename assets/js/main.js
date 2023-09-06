@@ -14,23 +14,30 @@ function copyFeedLink(target) {
   navigator.clipboard.writeText(input.value);
 }
 
-function setInputHide(name, hide) {
-  let section = document.getElementById(name);
+/**
+ * @param {string} formId The id of the form with the groups to hide/show
+ * @param {string} id The id of the select element
+ */
+function updateSelectGroups(formId, id) {
+  let form = document.getElementById(formId);
+  if (!form) return;
 
-  if (hide) {
-    section.classList.add("hide");
-  } else {
-    section.classList.remove("hide");
+  let value = form.querySelector(`#${id}`).value;
+
+  for (group of form.querySelectorAll(`[data-show-for-id=${id}]`)) {
+    if (group.dataset.showForValue == value) {
+      group.classList.remove("hide");
+    } else {
+      group.classList.add("hide");
+    }
   }
 }
 
-function updateFormForm() {
-  let type = document.querySelector("#form-form #type").value;
-
-  setInputHide("section-link", type != "link");
-  setInputHide("section-upload", type != "upload");
+function updateAllSelectGroups() {
+  updateSelectGroups("feed-form", "source-type");
 }
 
-if (document.querySelector("#form-form")) {
-  updateFormForm();
-}
+document.addEventListener("htmx:afterSwap", updateAllSelectGroups)
+
+
+updateAllSelectGroups();

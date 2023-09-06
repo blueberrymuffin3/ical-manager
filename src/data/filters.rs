@@ -17,7 +17,7 @@ impl<'a> Encode<'a, Sqlite> for Filters {
         &self,
         buf: &mut <Sqlite as sqlx::database::HasArguments<'a>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull {
-        // There is no way to return an erro here, so we panic
+        // There is no way to return an error here, so we panic
         let data = serde_json::to_vec(&self.0).expect("Error serializing filters");
         data.encode(buf)
     }

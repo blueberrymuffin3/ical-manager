@@ -1,16 +1,24 @@
-use std::time::Duration;
-
 use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
+use axum_typed_multipart::TypedMultipart;
 use icondata::LuIcon;
 use maud::{html, Markup};
 use sqlx::SqlitePool;
 
+use crate::{
+    data::feed::Feed,
+    presentation::{
+        form::{feed_form, ValidationErrors},
+        icon::icon,
+    },
+};
+
 use super::{
     error::{make_404, ServerResult},
-    fragments::{self, feed_form, FeedType, FormValues},
+    form::FeedFormValues,
+    fragments,
     htmx::HxWrap,
     icon::icon_alt,
     layout::layout,
@@ -32,10 +40,12 @@ pub async fn root(State(pool): State<SqlitePool>, hx_wrap: HxWrap) -> ServerResu
         layout(html!(
             h2 {
                 "Feeds "
+
                 button."small-button"."muted-button"."round-button"
                     id="feed-spinner"
                     hx-get="/"
                     hx-target="#feeds-table"
+                    hx-swap="outerHTML"
                     hx-indicator
                 {
                     div."htmx-spinner" {
@@ -44,40 +54,81 @@ pub async fn root(State(pool): State<SqlitePool>, hx_wrap: HxWrap) -> ServerResu
                 }
             }
             (inner)
+
+            a."button" href="/feed/create" {
+                (icon(LuIcon::LuPlus))
+                " New"
+            }
+
+            p {
+                "Note: feeds are only updated when requested to by your calendar app"
+            }
         ))
     }))
 }
 
 #[axum::debug_handler]
-pub async fn feed_edit(
+pub async fn feed_edit_get(
     State(pool): State<SqlitePool>,
     Path((id,)): Path<(i64,)>,
 ) -> ServerResult<Response> {
-    let Some(feed) = sqlx::query!(
-        "SELECT name, source_link, ttl_seconds FROM Feed WHERE id = ?",
-        id
-    )
-    .fetch_optional(&pool)
-    .await?
-    else {
+    let Some(feed) = Feed::select_by_id(id, &pool).await? else {
         return Ok(make_404());
     };
 
-    let values = FormValues {
-        name: feed.name,
-        feed_type: match feed.source_link {
-            Some(_) => FeedType::Link,
-            None => FeedType::Upload,
-        },
-        link: feed.source_link.unwrap_or_else(String::new),
-        ttl: feed
-            .ttl_seconds
-            .map(|seconds| Duration::from_secs(seconds as u64)),
-    };
+    let values: FeedFormValues = feed.data.into();
 
     Ok(layout(html!(
         h2 { "Edit Feed" }
-        (feed_form(Some(&values)))
+        (feed_form(Some(&values), ValidationErrors::default()))
     ))
     .into_response())
+}
+
+#[axum::debug_handler]
+pub async fn feed_edit_post(
+    State(pool): State<SqlitePool>,
+    Path((id,)): Path<(i64,)>,
+    TypedMultipart(form_values): TypedMultipart<FeedFormValues>,
+) -> ServerResult<Response> {
+    let mut txn = pool.begin().await?;
+
+    let Some(mut feed) = Feed::select_by_id(id, &mut txn).await? else {
+        return Ok(make_404());
+    };
+
+    match form_values.try_into_feed_data() {
+        Ok(feed_data) => {
+            feed.data = feed_data;
+            feed.update(&mut txn).await?;
+            txn.commit().await?;
+
+            Ok([("HX-Redirect", "/")].into_response())
+        }
+        Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn feed_create_get() -> ServerResult<Response> {
+    Ok(layout(html!(
+        h2 { "Create Feed" }
+        (feed_form(None, ValidationErrors::default()))
+    ))
+    .into_response())
+}
+
+#[axum::debug_handler]
+pub async fn feed_create_post(
+    State(pool): State<SqlitePool>,
+    TypedMultipart(form_values): TypedMultipart<FeedFormValues>,
+) -> ServerResult<Response> {
+    match form_values.try_into_feed_data() {
+        Ok(feed_data) => {
+            feed_data.create(&pool).await?;
+
+            Ok([("HX-Redirect", "/")].into_response())
+        }
+        Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
+    }
 }

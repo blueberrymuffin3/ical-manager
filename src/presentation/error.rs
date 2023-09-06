@@ -8,31 +8,36 @@ use super::layout::base_layout;
 
 pub type ServerResult<T> = Result<T, InternalServerError>;
 
-pub struct InternalServerError(pub anyhow::Error);
+pub struct InternalServerError(Response);
 
 impl<T> From<T> for InternalServerError
 where
     anyhow::Error: From<T>,
 {
     fn from(value: T) -> Self {
-        Self(value.into())
+        let error: anyhow::Error = value.into();
+
+        let content = html!(
+            pre { code {
+                (format_args!("{:?}", error))
+            }}
+        );
+
+        Self(make_error_page_auto(
+            content,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
     }
 }
 
 impl IntoResponse for InternalServerError {
     fn into_response(self) -> axum::response::Response {
-        let content = html!(
-            pre { code {
-                (format_args!("{:?}", self.0))
-            }}
-        );
-
-        make_error_page(
-            "500 Internal Server Error",
-            content,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
+        self.0
     }
+}
+
+pub fn make_error_page_auto(content: Markup, status: StatusCode) -> Response {
+    make_error_page(&status.to_string(), content, status)
 }
 
 pub fn make_error_page(title: &str, content: Markup, status: StatusCode) -> Response {
@@ -47,8 +52,7 @@ pub fn make_error_page(title: &str, content: Markup, status: StatusCode) -> Resp
 }
 
 pub fn make_404() -> Response {
-    make_error_page(
-        "404 Not Found",
+    make_error_page_auto(
         html!(
             a href="/" { "Go Home" }
         ),

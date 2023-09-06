@@ -100,3 +100,53 @@ input.copy-source.copy-source-shown {
     background-color: rgba(var(--status-color), var(--background-opacity));
   }
 }
+
+
+.validation-error {
+  color: red;
+}
+
+
+.spinner-button {
+  position: relative;
+}
+.spinner-button > svg {
+  opacity: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+.htmx-request .spinner-button {
+  color: transparent;
+}
+.htmx-request .spinner-button > svg {
+  color: white;
+  opacity: 1;
+  animation: spin-center 1s infinite;
+}
+
+@keyframes spin-center {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(180deg);
+  }
+}
+
+.danger-button,
+a.danger-button {
+  color: #ffffff;
+  border: 1px solid #de2929;
+  background: #de2929;
+}
+
+.danger-button:hover, .danger-button:focus, .danger-button:active,
+a.danger-button:hover,
+a.danger-button:focus,
+a.danger-button:active {
+  color: #ffffff;
+  border: 1px solid #b81c1c;
+  background: #b81c1c;
+}

@@ -6,7 +6,10 @@ use axum::{
 use maud::html;
 use sqlx::SqlitePool;
 
-use crate::presentation::error::{make_error_page, ServerResult};
+use crate::{
+    data::feed::Feed,
+    presentation::error::{make_error_page_auto, ServerResult},
+};
 
 #[axum::debug_handler]
 pub async fn export(
@@ -19,12 +22,8 @@ pub async fn export(
     }
     code.make_ascii_lowercase();
 
-    let Some(feed) = sqlx::query!("SELECT * FROM Feed WHERE link_code = ?", code)
-        .fetch_optional(&pool)
-        .await?
-    else {
-        return Ok(make_error_page(
-            "404 Not Found",
+    let Some(feed) = Feed::select_by_link_code(&code, &pool).await? else {
+        return Ok(make_error_page_auto(
             html!((format_args!("No feed found with link code {code:?}"))),
             StatusCode::NOT_FOUND,
         ));

@@ -1,11 +1,15 @@
 mod data;
 mod logic;
 mod presentation;
+mod strum_util;
 
 use std::{future::ready, net::SocketAddr};
 
 use anyhow::Context;
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use sqlx::{migrate, SqlitePool};
 use tower_http::services::ServeDir;
 
@@ -27,7 +31,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(presentation::pages::root))
         .route("/feed/:id/status", get(presentation::pages::feed_status))
-        .route("/feed/:id/edit", get(presentation::pages::feed_edit))
+        .route("/feed/:id/edit", get(presentation::pages::feed_edit_get))
+        .route("/feed/:id/edit", post(presentation::pages::feed_edit_post))
+        .route("/feed/create", get(presentation::pages::feed_create_get))
+        .route("/feed/create", post(presentation::pages::feed_create_post))
         .route("/export/:code", get(logic::export))
         .fallback_service(
             ServeDir::new("assets")

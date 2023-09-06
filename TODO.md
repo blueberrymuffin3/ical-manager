@@ -1,0 +1,6 @@
+- [ ] Normalize the database
+  - [ ] Seperate tables for different sources
+  - [ ] Seperate tables for different filters
+- [ ] Allow CRUD of filters
+- [ ] Export Functionality
+- [ ] Store when last updated, possibly by user agent/user agent type
