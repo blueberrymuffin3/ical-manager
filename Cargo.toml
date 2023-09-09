@@ -10,17 +10,22 @@ anyhow = "1.0.75"
 async-trait = "0.1.73"
 axum = { version = "0.6.20", features = ["macros"] }
 axum_typed_multipart = "0.9.0"
+bytes = "1.5.0"
 chrono = "0.4.26"
 dotenvy = "0.15.7"
 env_logger = "0.10.0"
 humantime = "2.1.0"
 icondata = { version = "0.0.7", features = ["LuCopy", "LuEdit", "LuRefreshCw", "LuTrash", "LuPlus"] }
+itertools = "0.11.0"
 log = "0.4.20"
 maud = { version = "0.25.0", features = ["axum"] }
+reqwest = { version = "0.11.20", features = ["rustls-tls"], default-features = false }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
 strum = { version = "0.25.0", features = ["derive"] }
+thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
+tokio-stream = "0.1.14"
 tower-http = { version = "0.4.3", features = ["fs"] }
 uuid = { version = "1.4.1", features = ["v4"] }

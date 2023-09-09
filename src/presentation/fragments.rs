@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::{fmt::{self, Display}, convert::Infallible};
 
 use anyhow::Context;
 use icondata::LuIcon;
@@ -9,8 +9,8 @@ use crate::data::feed::Feed;
 
 use super::icon::icon;
 
-fn feed_row(id: i64, name: &str, link_code: &str) -> anyhow::Result<Markup> {
-    Ok(html!(tr {
+fn feed_row(id: i64, name: &str, link_code: &str) -> Markup {
+    html!(tr {
         td { (name) }
         td { (feed_status_loader(id)) }
         td.actions {
@@ -34,23 +34,19 @@ fn feed_row(id: i64, name: &str, link_code: &str) -> anyhow::Result<Markup> {
 
             input type="text" class="copy-source" data-partial-copy-uri=(format_args!("/export/{link_code}.ical")) readonly {}
         }
-    }))
+    })
 }
 
-pub async fn feed_table(pool: &SqlitePool) -> anyhow::Result<Markup> {
-    let feeds = Feed::select(pool)
-        .await
-        .context("Error fetching feed list")?;
-
+pub fn feed_table(feeds: &[Feed]) -> Markup {
     if feeds.is_empty() {
-        return Ok(html!(
+        return html!(
             p."text-center" {
                 "No feeds found"
             }
-        ));
+        );
     }
 
-    Ok(html!(
+    html!(
         table."striped-table" id="feeds-table" {
             thead {
                 tr {
@@ -61,11 +57,11 @@ pub async fn feed_table(pool: &SqlitePool) -> anyhow::Result<Markup> {
             }
             tbody {
                 @for feed in feeds {
-                    (feed_row(feed.id, &feed.data.name, &feed.link_code)?)
+                    (feed_row(feed.id, &feed.data.name, &feed.link_code))
                 }
             }
         }
-    ))
+    )
 }
 
 enum FeedStatus {

@@ -8,7 +8,7 @@ use super::layout::base_layout;
 
 pub type ServerResult<T> = Result<T, InternalServerError>;
 
-pub struct InternalServerError(Response);
+pub struct InternalServerError(pub Response);
 
 impl<T> From<T> for InternalServerError
 where
@@ -17,17 +17,22 @@ where
     fn from(value: T) -> Self {
         let error: anyhow::Error = value.into();
 
-        let content = html!(
-            pre { code {
-                (format_args!("{:?}", error))
-            }}
-        );
+        let content = format_error_markup(error);
 
         Self(make_error_page_auto(
             content,
             StatusCode::INTERNAL_SERVER_ERROR,
         ))
     }
+}
+
+pub fn format_error_markup(error: anyhow::Error) -> Markup {
+    let content = html!(
+        pre { code {
+            (format_args!("{:?}", error))
+        }}
+    );
+    content
 }
 
 impl IntoResponse for InternalServerError {

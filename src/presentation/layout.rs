@@ -18,9 +18,9 @@ pub fn base_layout(content: Markup) -> Markup {
             body {
                 (content)
 
+                script src="/js/main.js" {}
                 script src="/js/htmx.min.js" {}
                 script src="/js/idiomorph-ext.min.js" {}
-                script src="/js/main.js" {}
             }
         }
     }

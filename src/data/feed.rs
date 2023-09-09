@@ -1,7 +1,11 @@
-use sqlx::{Executor, FromRow, Sqlite};
+use anyhow::Context;
+use sqlx::{Executor, FromRow, Sqlite, Transaction};
 use uuid::Uuid;
 
-use super::{filters, source};
+use super::{
+    filters::{self, Filters},
+    source::{self, Source},
+};
 
 #[derive(Debug, Clone, FromRow)]
 pub struct Feed {
@@ -11,28 +15,42 @@ pub struct Feed {
     pub data: FeedData,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone)]
 pub struct FeedData {
     pub name: String,
-    #[sqlx(flatten)]
     pub source: source::Source,
     pub filters: filters::Filters,
 }
 
+struct FeedRecord {
+    id: i64,
+    link_code: String,
+    name: String,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FeedUpdateError {
+    #[error("Internal Error")]
+    InternalError(#[from] anyhow::Error),
+    #[error("Database Error")]
+    DatabaseError(#[from] sqlx::Error),
+    #[error("No existing file uploaded, please upload one")]
+    FileSourceMissingFileError,
+}
+
 impl FeedData {
-    pub async fn create<'a>(
-        self,
-        executor: impl Executor<'a, Database = Sqlite>,
-    ) -> sqlx::Result<Feed> {
+    pub async fn create<'a>(self, txn: &mut Transaction<'_, Sqlite>) -> Result<Feed, FeedUpdateError> {
         let link_code = Uuid::new_v4().simple().to_string();
         let id = sqlx::query_scalar!(
-            "INSERT INTO Feed(link_code, name, filters) VALUES (?, ?, ?) RETURNING id",
+            "INSERT INTO Feed(link_code, name) VALUES (?, ?) RETURNING id",
             link_code,
             self.name,
-            self.filters
         )
-        .fetch_one(executor)
+        .fetch_one(&mut *txn)
         .await?;
+
+        self.source.upsert(&mut *txn, id).await?;
+        self.filters.upsert(&mut *txn, id).await?;
 
         Ok(Feed {
             id,
@@ -43,47 +61,76 @@ impl FeedData {
 }
 
 impl Feed {
-    pub async fn select<'a>(
-        executor: impl Executor<'a, Database = Sqlite>,
-    ) -> sqlx::Result<Vec<Feed>> {
-        sqlx::query_as("SELECT * FROM Feed")
-            .fetch_all(executor)
-            .await
+    pub async fn select(txn: &mut Transaction<'_, Sqlite>) -> anyhow::Result<Vec<Feed>> {
+        let records = sqlx::query_as!(FeedRecord, "SELECT id, link_code, name FROM Feed")
+            .fetch_all(&mut *txn)
+            .await?;
+        let mut vec = Vec::with_capacity(records.len());
+
+        for record in records {
+            vec.push(Feed::from_record(&mut *txn, record).await?)
+        }
+
+        Ok(vec)
     }
 
     pub async fn select_by_id<'a>(
         id: i64,
-        executor: impl Executor<'a, Database = Sqlite>,
-    ) -> sqlx::Result<Option<Feed>> {
-        sqlx::query_as("SELECT * FROM Feed WHERE id = ?")
-            .bind(id)
-            .fetch_optional(executor)
-            .await
+        txn: &mut Transaction<'_, Sqlite>,
+    ) -> anyhow::Result<Option<Feed>> {
+        let Some(record) = sqlx::query_as!(
+            FeedRecord,
+            "SELECT id, link_code, name FROM Feed WHERE id = ?",
+            id
+        )
+        .fetch_optional(&mut *txn)
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(Feed::from_record(&mut *txn, record).await?))
     }
 
     pub async fn select_by_link_code<'a>(
         link_code: &str,
-        executor: impl Executor<'a, Database = Sqlite>,
-    ) -> sqlx::Result<Option<Feed>> {
-        sqlx::query_as("SELECT * FROM Feed WHERE link_code = ?")
-            .bind(link_code)
-            .fetch_optional(executor)
-            .await
+        txn: &mut Transaction<'_, Sqlite>,
+    ) -> anyhow::Result<Option<Feed>> {
+        let Some(record) = sqlx::query_as!(
+            FeedRecord,
+            "SELECT id, link_code, name FROM Feed WHERE link_code = ?",
+            link_code
+        )
+        .fetch_optional(&mut *txn)
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(Feed::from_record(&mut *txn, record).await?))
     }
 
-    pub async fn update<'a>(
-        &self,
-        executor: impl Executor<'a, Database = Sqlite>,
-    ) -> sqlx::Result<()> {
-        sqlx::query!(
-            "UPDATE Feed SET link_code = ?, name = ?, filters = ? WHERE id = ? RETURNING id",
+    pub async fn update<'a>(&self, txn: &mut Transaction<'_, Sqlite>) -> Result<(), FeedUpdateError> {
+        let id = sqlx::query_scalar!(
+            "UPDATE Feed SET link_code = ?, name = ? WHERE id = ? RETURNING id",
             self.link_code,
             self.data.name,
-            self.data.filters,
-            self.id
+            self.id,
         )
-        .fetch_one(executor)
-        .await?;
+        .fetch_one(&mut *txn)
+        .await
+        .context("Error updating feed")?
+        .expect("NOT NULL violated");
+
+        self.data
+            .source
+            .upsert(&mut *txn, id)
+            .await?;
+        self.data
+            .filters
+            .upsert(&mut *txn, id)
+            .await?;
+
         Ok(())
     }
 
@@ -95,5 +142,24 @@ impl Feed {
             .fetch_optional(executor)
             .await?
             .is_some())
+    }
+
+    async fn from_record(
+        txn: &mut Transaction<'_, Sqlite>,
+        feed_record: FeedRecord,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            id: feed_record.id,
+            link_code: feed_record.link_code,
+            data: FeedData {
+                name: feed_record.name,
+                source: Source::select(txn, feed_record.id)
+                    .await
+                    .context("Error fetching source for feed")?,
+                filters: Filters::select(txn, feed_record.id)
+                    .await
+                    .context("Error fetching filters for feed")?,
+            },
+        })
     }
 }

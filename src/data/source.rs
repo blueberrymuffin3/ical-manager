@@ -1,72 +1,168 @@
-use std::{fmt::Display, str::FromStr};
+mod ttl;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail, Context};
+use async_trait::async_trait;
+use bytes::Bytes;
+use sqlx::{decode::Decode, types::Type, ColumnIndex, FromRow, Row, Sqlite, Transaction};
 
-#[derive(Clone, Copy, Debug, sqlx::Type)]
-#[sqlx(transparent)]
-pub struct FeedTtl(i64);
+use super::feed::FeedUpdateError;
 
-impl FeedTtl {
-    pub const fn from_seconds(seconds: i64) -> Self {
-        assert!(seconds > 0);
-        Self(seconds)
-    }
+#[async_trait]
+pub trait SourceTrait {
+    async fn fetch(&self) -> anyhow::Result<Bytes>;
 }
 
-impl Display for FeedTtl {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        humantime::format_duration(std::time::Duration::from_secs(self.0.try_into().unwrap()))
-            .fmt(f)
-    }
+#[derive(Debug, Clone)]
+pub struct SourceHTTP {
+    pub link: String,
 }
 
-impl Default for FeedTtl {
-    fn default() -> Self {
-        // 1 hour
-        Self(60 * 60)
-    }
-}
-
-impl FromStr for FeedTtl {
-    type Err = humantime::DurationError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            humantime::parse_duration(s)?.as_secs().try_into().unwrap(),
-        ))
+#[async_trait]
+impl SourceTrait for SourceHTTP {
+    async fn fetch(&self) -> anyhow::Result<Bytes> {
+        // TODO: Make this more robust, check mime types, set headers, etc...
+        let response = reqwest::get(&self.link)
+            .await
+            .with_context(|| format!("Error fetching {}", self.link))?;
+        Ok(response
+            .bytes()
+            .await
+            .context("Error downloading response")?)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct UrlSource {
-    pub source_link: String,
-    pub ttl: FeedTtl,
+pub struct SourceFile {
+    pub contents: Option<Bytes>,
+}
+
+#[async_trait]
+impl SourceTrait for SourceFile {
+    async fn fetch(&self) -> anyhow::Result<Bytes> {
+        self.contents.clone().context("Missing file contents")
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Source {
-    UrlSource(UrlSource),
-    FileSource,
+    HTTP(SourceHTTP),
+    File(SourceFile),
 }
 
-impl<'a, R: ::sqlx::Row> ::sqlx::FromRow<'a, R> for Source
+#[async_trait]
+impl SourceTrait for Source {
+    async fn fetch(&self) -> anyhow::Result<Bytes> {
+        match self {
+            Source::HTTP(http) => http.fetch().await,
+            Source::File(file) => file.fetch().await,
+        }
+    }
+}
+
+impl Source {
+    pub(super) async fn select(txn: &mut Transaction<'_, Sqlite>, id: i64) -> anyhow::Result<Self> {
+        match (
+            sqlx::query_as!(SourceHTTP, "SELECT link FROM SourceHTTP WHERE id = ?", id)
+                .fetch_optional(&mut *txn)
+                .await?,
+            sqlx::query!("SELECT contents FROM SourceFile WHERE id = ?", id)
+                .fetch_optional(&mut *txn)
+                .await?,
+        ) {
+            (Some(source_http), None) => Ok(Self::HTTP(source_http)),
+            (None, Some(source_file)) => Ok(Self::File(SourceFile {
+                contents: Some(source_file.contents.into()),
+            })),
+            _ => bail!("Could not decode source from database: source count != 1"),
+        }
+    }
+
+    pub(super) async fn upsert(
+        &self,
+        txn: &mut Transaction<'_, Sqlite>,
+        id: i64,
+    ) -> Result<(), FeedUpdateError> {
+        if !matches!(self, Self::HTTP(_)) {
+            sqlx::query!("DELETE FROM SourceHttp WHERE id = ?", id)
+                .fetch_all(&mut *txn)
+                .await?;
+        }
+
+        if !matches!(self, Self::File(_)) {
+            sqlx::query!("DELETE FROM SourceFile WHERE id = ?", id)
+                .fetch_all(&mut *txn)
+                .await?;
+        }
+
+        match self {
+            Source::HTTP(SourceHTTP { link }) => {
+                sqlx::query!("INSERT INTO SourceHttp(id, link) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET link = excluded.link", id, link)
+                    .fetch_all(&mut *txn)
+                    .await?;
+            }
+            Source::File(SourceFile { contents }) => {
+                match contents {
+                    Some(contents) => {
+                        let contents = contents.to_vec();
+                        sqlx::query!(
+                            "INSERT INTO SourceFile(id, contents) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET contents = excluded.contents",
+                            id,
+                            contents
+                        )
+                        .fetch_all(&mut *txn)
+                        .await?;
+                    }
+                    None => {
+                        sqlx::query_scalar!("SELECT id FROM SourceFile WHERE id = ?", id)
+                            .fetch_optional(&mut *txn)
+                            .await?
+                            .ok_or(FeedUpdateError::FileSourceMissingFileError)?;
+                    }
+                }
+
+                // if let Some(contents) = contents {
+                //     let contents = contents.to_vec();
+                //     sqlx::query!(
+                //         "UPDATE SourceFile SET contents = ? WHERE id = ?",
+                //         contents,
+                //         id,
+                //     )
+                //     .fetch_all(&mut *txn)
+                //     .await?;
+                // }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, R: Row> FromRow<'a, R> for Source
 where
-    &'a ::std::primitive::str: ::sqlx::ColumnIndex<R>,
-    Option<String>: ::sqlx::decode::Decode<'a, R::Database>,
-    Option<String>: ::sqlx::types::Type<R::Database>,
-    Option<FeedTtl>: ::sqlx::decode::Decode<'a, R::Database>,
-    Option<FeedTtl>: ::sqlx::types::Type<R::Database>,
+    &'a str: ColumnIndex<R>,
+    Option<i64>: Decode<'a, R::Database> + Type<R::Database>,
+    SourceHTTP: FromRow<'a, R>,
+    SourceFile: FromRow<'a, R>,
 {
     fn from_row(row: &'a R) -> ::sqlx::Result<Self> {
-        let source_link: Option<String> = row.try_get("source_link")?;
-        let ttl_seconds: Option<FeedTtl> = row.try_get("ttl_seconds")?;
-        match (source_link, ttl_seconds) {
-            (Some(source_link), Some(ttl)) => Ok(Source::UrlSource(UrlSource { source_link, ttl })),
-            (None, None) => Ok(Source::FileSource),
-            _ => Err(sqlx::Error::ColumnDecode {
-                index: "source_link".to_owned(),
-                source: anyhow!("Could not decode source from database").into(),
-            }),
+        match (
+            row.try_get("source_url_id")?,
+            row.try_get("source_file_id")?,
+        ) {
+            (Some(_), None) => SourceHTTP::from_row(row).map(Source::HTTP),
+            (None, Some(_)) => SourceFile::from_row(row).map(Source::File),
+            _ => Err(sqlx::Error::Decode(
+                anyhow!("Could not decode source from database: source count != 1").into(),
+            )),
         }
+
+        // match (source_link, ttl_seconds) {
+        //     (Some(source_link), Some(ttl)) => Ok(Source::Url(SourceUrl { source_link, ttl })),
+        //     (None, None) => Ok(Source::File),
+        //     _ => Err(sqlx::Error::ColumnDecode {
+        //         index: "source_link".to_owned(),
+        //         source: anyhow!("Could not decode source from database").into(),
+        //     }),
+        // }
     }
 }

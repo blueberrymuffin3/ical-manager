@@ -15,16 +15,15 @@ function copyFeedLink(target) {
 }
 
 /**
- * @param {string} formId The id of the form with the groups to hide/show
- * @param {string} id The id of the select element
+ * @this {HTMLSelectElement}
  */
-function updateSelectGroups(formId, id) {
-  let form = document.getElementById(formId);
+function updateSelectGroups() {
+  const form = document.getElementById(this.dataset.triggerShowHideForm);
   if (!form) return;
 
-  let value = form.querySelector(`#${id}`).value;
+  const value = form.querySelector(`#${this.id}`).value;
 
-  for (group of form.querySelectorAll(`[data-show-for-id=${id}]`)) {
+  for (group of form.querySelectorAll(`[data-show-for-id=${this.id}]`)) {
     if (group.dataset.showForValue == value) {
       group.classList.remove("hide");
     } else {
@@ -34,10 +33,12 @@ function updateSelectGroups(formId, id) {
 }
 
 function updateAllSelectGroups() {
-  updateSelectGroups("feed-form", "source-type");
+  for (const select of document.querySelectorAll("[data-trigger-show-hide-form]")) {
+    select.removeEventListener("change", updateSelectGroups);
+    select.addEventListener("change", updateSelectGroups);
+    updateSelectGroups.call(select)
+  }
 }
 
-document.addEventListener("htmx:afterSwap", updateAllSelectGroups)
-
-
+document.addEventListener("htmx:afterSwap", updateAllSelectGroups);
 updateAllSelectGroups();

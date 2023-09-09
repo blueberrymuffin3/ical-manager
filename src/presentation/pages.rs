@@ -1,3 +1,4 @@
+use anyhow::Context;
 use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
@@ -34,7 +35,11 @@ pub async fn feed_status(
 
 #[axum::debug_handler]
 pub async fn root(State(pool): State<SqlitePool>, hx_wrap: HxWrap) -> ServerResult<Markup> {
-    let table = fragments::feed_table(&pool).await?;
+    let feeds = Feed::select(&mut pool.begin().await?)
+        .await
+        .context("Error fetching feed list")?;
+
+    let table = fragments::feed_table(&feeds);
 
     Ok(hx_wrap.wrap(table, |inner| {
         layout(html!(
@@ -72,7 +77,7 @@ pub async fn feed_edit_get(
     State(pool): State<SqlitePool>,
     Path((id,)): Path<(i64,)>,
 ) -> ServerResult<Response> {
-    let Some(feed) = Feed::select_by_id(id, &pool).await? else {
+    let Some(feed) = Feed::select_by_id(id, &mut pool.begin().await?).await? else {
         return Ok(make_404());
     };
 
@@ -100,10 +105,17 @@ pub async fn feed_edit_post(
     match form_values.try_into_feed_data() {
         Ok(feed_data) => {
             feed.data = feed_data;
-            feed.update(&mut txn).await?;
-            txn.commit().await?;
-
-            Ok([("HX-Redirect", "/")].into_response())
+            match feed.update(&mut txn).await {
+                Ok(()) => {
+                    txn.commit().await?;
+                    Ok([("HX-Redirect", "/")].into_response())
+                }
+                Err(error) => Ok(feed_form(
+                    Some(&form_values),
+                    ValidationErrors::from_feed_update_error(error),
+                )
+                .into_response()),
+            }
         }
         Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
     }
@@ -125,7 +137,9 @@ pub async fn feed_create_post(
 ) -> ServerResult<Response> {
     match form_values.try_into_feed_data() {
         Ok(feed_data) => {
-            feed_data.create(&pool).await?;
+            let mut txn = pool.begin().await?;
+            feed_data.create(&mut txn).await?;
+            txn.commit().await?;
 
             Ok([("HX-Redirect", "/")].into_response())
         }
