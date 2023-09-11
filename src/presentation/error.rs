@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use maud::{html, Markup};
+use maud::{html, Markup, Render};
 
 use super::layout::base_layout;
 
@@ -15,9 +15,7 @@ where
     anyhow::Error: From<T>,
 {
     fn from(value: T) -> Self {
-        let error: anyhow::Error = value.into();
-
-        let content = format_error_markup(error);
+        let content = format_error_markup(value);
 
         Self(make_error_page_auto(
             content,
@@ -26,10 +24,10 @@ where
     }
 }
 
-pub fn format_error_markup(error: anyhow::Error) -> Markup {
+pub fn format_error_markup(error: impl Into<anyhow::Error>) -> Markup {
     let content = html!(
         pre { code {
-            (format_args!("{:?}", error))
+            (format_args!("{:?}", error.into()))
         }}
     );
     content
@@ -41,11 +39,11 @@ impl IntoResponse for InternalServerError {
     }
 }
 
-pub fn make_error_page_auto(content: Markup, status: StatusCode) -> Response {
+pub fn make_error_page_auto(content: impl Render, status: StatusCode) -> Response {
     make_error_page(&status.to_string(), content, status)
 }
 
-pub fn make_error_page(title: &str, content: Markup, status: StatusCode) -> Response {
+pub fn make_error_page(title: &str, content: impl Render, status: StatusCode) -> Response {
     let html = base_layout(html!(
         div."medium-container" {
             h1 {(title)}

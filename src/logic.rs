@@ -1,10 +1,9 @@
 use axum::{
     extract::{Path, State},
-    http::{StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
-use maud::html;
-use reqwest::header::{IntoHeaderName, CONTENT_TYPE};
+use reqwest::header::CONTENT_TYPE;
 use sqlx::SqlitePool;
 
 use crate::{
@@ -28,7 +27,7 @@ pub async fn export(
 
     let Some(feed) = Feed::select_by_link_code(&code, &mut pool.begin().await?).await? else {
         return Ok(make_error_page_auto(
-            html!((format_args!("No feed found with link code {code:?}"))),
+            format_args!("No feed found with link code {code:?}"),
             StatusCode::NOT_FOUND,
         ));
     };
@@ -41,6 +40,5 @@ pub async fn export(
         ))
     })?;
 
-    // Ok(([(CONTENT_TYPE, "text/calendar")], data).into_response())
-    Ok(([(CONTENT_TYPE, "text/plain")], data).into_response())
+    Ok(([(CONTENT_TYPE, "text/calendar")], data).into_response())
 }
