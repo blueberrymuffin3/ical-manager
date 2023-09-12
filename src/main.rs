@@ -10,8 +10,19 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use presentation::auth::AuthManager;
 use sqlx::{migrate, SqlitePool};
+use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
+
+use crate::presentation::auth::LOCATION_LOGIN;
+
+#[derive(axum::extract::FromRef, Clone)]
+struct AppState {
+    pool: SqlitePool,
+    auth: AuthManager,
+    cookie_key: tower_cookies::Key,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,19 +39,38 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Error running migration")?;
 
+    let auth = AuthManager::new()
+        .await
+        .context("Error making AuthManager")?;
+
+    let cookie_key = std::env::var("COOKIE_KEY").context("Error loading COOKIE_KEY")?;
+
+    // TODO: Save the key in the database
+    let state: AppState = AppState {
+        pool,
+        auth,
+        cookie_key: cookie::Key::derive_from(cookie_key.as_bytes()),
+    };
+
     let app = Router::new()
+        // Pages
         .route("/", get(presentation::pages::root))
         .route("/feed/:id/status", get(presentation::pages::feed_status))
         .route("/feed/:id/edit", get(presentation::pages::feed_edit_get))
         .route("/feed/:id/edit", post(presentation::pages::feed_edit_post))
         .route("/feed/create", get(presentation::pages::feed_create_get))
         .route("/feed/create", post(presentation::pages::feed_create_post))
+        .route("/test", get(presentation::pages::test))
+        .nest(LOCATION_LOGIN, presentation::auth::router())
+        // API
         .route("/export/:code", get(logic::export))
+        //
+        .layer(CookieManagerLayer::new())
         .fallback_service(
             ServeDir::new("assets")
                 .not_found_service(get(|| ready(presentation::error::make_404()))),
         )
-        .with_state(pool);
+        .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     log::info!("listening on http://{}", addr);

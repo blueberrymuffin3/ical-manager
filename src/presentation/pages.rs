@@ -8,20 +8,15 @@ use icondata::LuIcon;
 use maud::{html, Markup};
 use sqlx::SqlitePool;
 
-use crate::{
-    data::feed::Feed,
-    presentation::{
-        form::{feed_form, ValidationErrors},
-        icon::icon,
-    },
-};
+use crate::data::feed::Feed;
 
 use super::{
+    auth::Authenticated,
     error::{make_404, ServerResult},
-    form::FeedFormValues,
+    form::{feed_form, FeedFormValues, ValidationErrors},
     fragments,
     htmx::HxWrap,
-    icon::icon_alt,
+    icon::{icon, icon_alt},
     layout::layout,
 };
 
@@ -145,4 +140,12 @@ pub async fn feed_create_post(
         }
         Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
     }
+}
+
+#[axum::debug_handler]
+pub async fn test(Authenticated: Authenticated) -> ServerResult<Response> {
+    Ok(layout(html!(
+        h2 { "Hello World!" }
+    ))
+    .into_response())
 }

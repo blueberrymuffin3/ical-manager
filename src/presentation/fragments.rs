@@ -1,4 +1,4 @@
-use std::{fmt::{self, Display}, convert::Infallible};
+use std::fmt::{self, Display};
 
 use anyhow::Context;
 use icondata::LuIcon;

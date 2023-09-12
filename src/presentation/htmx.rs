@@ -2,9 +2,13 @@ use std::convert::Infallible;
 
 use async_trait::async_trait;
 use axum::{
-    extract::FromRequest,
-    http::{HeaderMap, HeaderValue, Request},
+    extract::FromRequestParts,
+    http::{request::Parts, HeaderMap, HeaderValue},
 };
+
+pub fn is_htmx_request(headers: &HeaderMap) -> bool {
+    headers.get("HX-Request") == Some(&HeaderValue::from_static("true"))
+}
 
 pub struct HxWrap {
     is_htmx: bool,
@@ -21,18 +25,12 @@ impl HxWrap {
 }
 
 #[async_trait]
-impl<S, B> FromRequest<S, B> for HxWrap
-where
-    // these bounds are required by `async_trait`
-    B: Send + 'static,
-    S: Send + Sync,
-{
+impl<S> FromRequestParts<S> for HxWrap {
     type Rejection = Infallible;
 
-    async fn from_request(req: Request<B>, state: &S) -> Result<Self, Self::Rejection> {
-        let headers = HeaderMap::from_request(req, state).await?;
-
-        let is_htmx = headers.get("HX-Request") == Some(&HeaderValue::from_static("true"));
-        Ok(Self { is_htmx })
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        Ok(Self {
+            is_htmx: is_htmx_request(&parts.headers),
+        })
     }
 }
