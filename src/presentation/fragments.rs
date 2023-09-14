@@ -40,14 +40,14 @@ fn feed_row(id: i64, name: &str, link_code: &str) -> Markup {
 pub fn feed_table(feeds: &[Feed]) -> Markup {
     if feeds.is_empty() {
         return html!(
-            p."text-center" {
+            p."text-center" #"feeds-table" {
                 "No feeds found"
             }
         );
     }
 
     html!(
-        table."striped-table" id="feeds-table" {
+        table."striped-table" #"feeds-table" {
             thead {
                 tr {
                     th { "Name" }
