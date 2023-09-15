@@ -241,7 +241,11 @@ fn submit_button(content: impl Render) -> Markup {
 
 const DURATION_6_HOURS: &str = "6h";
 
-pub fn feed_form(values: Option<&FeedFormValues>, errors: ValidationErrors) -> Markup {
+pub fn feed_form(
+    values: Option<&FeedFormValues>,
+    is_new: bool,
+    errors: ValidationErrors,
+) -> Markup {
     let (name, feed_type, link, filter_cr) = match values {
         Some(FeedFormValues {
             name,
@@ -258,6 +262,11 @@ pub fn feed_form(values: Option<&FeedFormValues>, errors: ValidationErrors) -> M
             filter_cr.as_bool(),
         ),
         None => (None, None, None, false),
+    };
+
+    let submit_text = match is_new {
+        true => "Create",
+        false => "Save",
     };
 
     html!(
@@ -308,9 +317,8 @@ pub fn feed_form(values: Option<&FeedFormValues>, errors: ValidationErrors) -> M
                 (errors.render("filter-cr"))
             }
 
-            (submit_button("Submit"))
+            (submit_button(submit_text))
             (errors.render("general"))
         }
-
     )
 }

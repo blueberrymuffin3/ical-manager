@@ -80,7 +80,7 @@ pub async fn feed_edit_get(
 
     Ok(layout(html!(
         h2 { "Edit Feed" }
-        (feed_form(Some(&values), ValidationErrors::default()))
+        (feed_form(Some(&values), false, ValidationErrors::default()))
     ))
     .into_response())
 }
@@ -107,12 +107,13 @@ pub async fn feed_edit_post(
                 }
                 Err(error) => Ok(feed_form(
                     Some(&form_values),
+                    false,
                     ValidationErrors::from_feed_update_error(error),
                 )
                 .into_response()),
             }
         }
-        Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
+        Err(errors) => Ok(feed_form(Some(&form_values), false, errors).into_response()),
     }
 }
 
@@ -120,7 +121,7 @@ pub async fn feed_edit_post(
 pub async fn feed_create_get() -> ServerResult<Response> {
     Ok(layout(html!(
         h2 { "Create Feed" }
-        (feed_form(None, ValidationErrors::default()))
+        (feed_form(None, true, ValidationErrors::default()))
     ))
     .into_response())
 }
@@ -138,7 +139,7 @@ pub async fn feed_create_post(
 
             Ok([("HX-Redirect", "/")].into_response())
         }
-        Err(errors) => Ok(feed_form(Some(&form_values), errors).into_response()),
+        Err(errors) => Ok(feed_form(Some(&form_values), true, errors).into_response()),
     }
 }
 
