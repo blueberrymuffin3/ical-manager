@@ -12,8 +12,8 @@ use openidconnect::{AuthorizationCode, CsrfToken, Nonce};
 use serde::{Deserialize, Serialize};
 
 use crate::presentation::{
-    cookies::{AutoCookie, CookieType, DeleteCookie, NewCookie, ReadCookie, SetCookie},
-    error::{make_error_page_auto, ServerResult},
+    cookies::{AutoCookie, CookieType, NewCookie, ReadCookie, SetCookie},
+    error::{make_error_page_auto, InternalServerError, ServerResult},
     layout::layout,
 };
 
@@ -84,21 +84,32 @@ struct CallbackParams {
 }
 
 async fn callback(
+    Path(provider): Path<AuthProvider>,
     Query(params): Query<CallbackParams>,
     ReadCookie(csrf): ReadCookie<CsrfToken>,
     ReadCookie(nonce): ReadCookie<Nonce>,
     State(auth_manager): State<AuthManager>,
-) -> impl IntoResponse {
+) -> ServerResult<Response> {
     let (csrf, nonce) = match (csrf, nonce) {
         (Some(csrf), Some(nonce)) => (csrf, nonce),
-        _ => return make_error_page_auto(html!("Bad Cookies"), StatusCode::BAD_REQUEST),
+        _ => {
+            return Err(InternalServerError(make_error_page_auto(
+                html!("Bad Cookies"),
+                StatusCode::BAD_REQUEST,
+            )))
+        }
     };
 
     if params.state.secret() != csrf.secret() {
-        return make_error_page_auto(html!("Invalid CSRF Token"), StatusCode::BAD_GATEWAY);
+        return Err(InternalServerError(make_error_page_auto(
+            html!("Invalid CSRF Token"),
+            StatusCode::BAD_GATEWAY,
+        )));
     }
 
-    "Hello World".into_response()
+    auth_manager.exchange(provider, params.code, nonce).await?;
+
+    Ok("Hello World".into_response())
 }
 
 pub fn router<State>() -> Router<State>
@@ -109,6 +120,6 @@ where
 {
     Router::<State>::new()
         .route("/", get(login))
-        .route("/callback", get(callback))
         .route("/:provider", post(do_login))
+        .route("/:provider/callback", get(callback))
 }
