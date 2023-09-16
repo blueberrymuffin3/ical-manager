@@ -1,18 +1,22 @@
-use std::fmt::{self, Display};
+use std::fmt;
 
-use anyhow::Context;
 use icondata::LuIcon;
-use maud::{html, Markup};
+use maud::{html, Markup, Render};
 use sqlx::SqlitePool;
 
-use crate::data::feed::Feed;
+use crate::{
+    data::feed::Feed,
+    logic::{process_feed, CalendarStats},
+};
 
 use super::icon::icon;
 
 fn feed_row(id: i64, name: &str, link_code: &str) -> Markup {
     html!(tr {
         td { (name) }
-        td { (feed_status_loader(id)) }
+        td hx-target="this" {
+            (feed_status_loader(id))
+        }
         td.actions {
             a."button"."small-button"."round-button"
                 href=(format_args!("/feed/{id}/edit")) {
@@ -24,7 +28,7 @@ fn feed_row(id: i64, name: &str, link_code: &str) -> Markup {
                 onclick="copyFeedLink(this);"
             {
                 (icon(LuIcon::LuCopy))
-                " Copy Public Link"
+                " Link"
             }
 
             button."small-button"."danger-button"."round-button" {
@@ -71,14 +75,9 @@ enum FeedStatus {
     Ok,
 }
 
-fn feed_status_id(id: impl Display) -> String {
-    format!("feed-status-{id}")
-}
-
 fn feed_status_base(
     status: FeedStatus,
-    id: i64,
-    text: &str,
+    text: impl Render,
     hx_get: Option<fmt::Arguments>,
 ) -> Markup {
     let type_class = match status {
@@ -90,9 +89,7 @@ fn feed_status_base(
     html!(
         div
             .status.(type_class)
-            #(feed_status_id(id))
             hx-get=[hx_get]
-            hx-swap=[hx_get.and(Some("outerHTML"))]
             hx-trigger=[hx_get.and(Some("load"))]
         { (text) }
     )
@@ -101,24 +98,36 @@ fn feed_status_base(
 fn feed_status_loader(id: i64) -> Markup {
     feed_status_base(
         FeedStatus::Loading,
-        id,
         "Loading...",
         Some(format_args!("/feed/{id}/status")),
     )
 }
 
-fn feed_status_result(status: FeedStatus, id: i64, text: &str) -> Markup {
-    feed_status_base(status, id, text, None)
+fn feed_status_result(status: FeedStatus, text: impl Render) -> Markup {
+    feed_status_base(status, text, None)
 }
 
 pub async fn feed_status(pool: &SqlitePool, id: i64) -> anyhow::Result<Markup> {
-    let Some(feed) = sqlx::query!("SELECT id FROM Feed WHERE id = ?", id)
-        .fetch_optional(pool)
-        .await
-        .context("Error fetching feed list")?
-    else {
-        return Ok(feed_status_result(FeedStatus::Error, id, "Not Found"));
-    };
+    match get_feed_status(pool, id).await {
+        Ok(Some((_data, stats))) => Ok(feed_status_result(
+            FeedStatus::Ok,
+            format_args!("Updated now, {} events", stats.event_count),
+        )),
+        Ok(None) => Ok(feed_status_result(FeedStatus::Error, "Not Found")),
+        Err(err) => Ok(feed_status_result(FeedStatus::Error, format_args!("{err}"))),
+    }
+}
 
-    return Ok(feed_status_result(FeedStatus::Ok, feed.id, "Found"));
+async fn get_feed_status(
+    pool: &sqlx::Pool<sqlx::Sqlite>,
+    id: i64,
+) -> Result<Option<(bytes::Bytes, CalendarStats)>, anyhow::Error> {
+    let mut txn = pool.begin().await?;
+    let feed = Feed::select_by_id(id, &mut txn).await?;
+    txn.rollback().await?;
+
+    match feed {
+        Some(feed) => Ok(Some(process_feed(&feed).await?)),
+        None => Ok(None),
+    }
 }

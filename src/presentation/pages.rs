@@ -4,15 +4,16 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_typed_multipart::TypedMultipart;
+use http::{header::CONTENT_TYPE, StatusCode};
 use icondata::LuIcon;
 use maud::{html, Markup};
 use sqlx::SqlitePool;
 
-use crate::data::feed::Feed;
+use crate::{data::feed::Feed, logic::process_feed};
 
 use super::{
     auth::Authenticated,
-    error::{make_404, ServerResult},
+    error::{make_404, make_error_page_auto, ServerResult},
     form::{feed_form, FeedFormValues, ValidationErrors},
     fragments,
     htmx::HxWrap,
@@ -149,4 +150,27 @@ pub async fn test(Authenticated: Authenticated) -> ServerResult<Response> {
         h2 { "Hello World!" }
     ))
     .into_response())
+}
+
+#[axum::debug_handler]
+pub async fn export(
+    State(pool): State<SqlitePool>,
+    Path(mut code): Path<String>,
+) -> ServerResult<Response> {
+    // Remove any extensions
+    if let Some(dot) = code.find('.') {
+        code.truncate(dot);
+    }
+    code.make_ascii_lowercase();
+
+    let Some(feed) = Feed::select_by_link_code(&code, &mut pool.begin().await?).await? else {
+        return Ok(make_error_page_auto(
+            format_args!("No feed found with link code {code:?}"),
+            StatusCode::NOT_FOUND,
+        ));
+    };
+
+    let (data, _stats) = process_feed(&feed).await?;
+
+    Ok(([(CONTENT_TYPE, "text/calendar")], data).into_response())
 }

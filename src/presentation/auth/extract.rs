@@ -15,7 +15,7 @@ use crate::presentation::{
     htmx::is_htmx_request,
 };
 
-use super::pages::{LOCATION_LOGIN, LoginPageParams};
+use super::pages::{LoginPageParams, LOCATION_LOGIN};
 
 pub struct Authenticated;
 pub struct UnauthenticatedResponse {
@@ -96,7 +96,7 @@ where
 {
     type Rejection = Result<UnauthenticatedResponse, InternalServerError>;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let cookies = Cookies::from_request_parts(parts, &())
             .await
             .map_err(|x| Err(InternalServerError(x.into_response())))?;

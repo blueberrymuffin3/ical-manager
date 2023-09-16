@@ -51,15 +51,15 @@ input.copy-source.copy-source-shown {
   --status-size: 2em;
   --status-dot-size: 0.75em;
   --background-opacity: 0.15;
-  display: block;
+  display: inline-block;
 
   border-radius: 1em;
-  height: var(--status-size);
   background-color: rgba(var(--status-color), var(--background-opacity));
   position: relative;
   padding-top: 0.1em;
+  padding-bottom: 0.2em;
   padding-left: calc(var(--status-size) / 2 + var(--status-dot-size));
-  padding-right: calc(var(--status-size) / 2);
+  padding-right: calc(0.5em + var(--status-size) / 2);
 }
 
 /* Status Dot */

@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/test", get(presentation::pages::test))
         .nest(LOCATION_LOGIN, presentation::auth::router())
         // API
-        .route("/export/:code", get(logic::export))
+        .route("/export/:code", get(presentation::pages::export))
         //
         .layer(CookieManagerLayer::new())
         .fallback_service(
