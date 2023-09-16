@@ -148,7 +148,7 @@ pub struct FeedFormValues {
     pub source_link: String,
     pub source_upload: Option<Bytes>,
     // pub source_ttl: String,
-    pub filter_cr: Option<MultipartCheckbox>,
+    // pub filter_cr: Option<MultipartCheckbox>,
 }
 
 impl From<FeedData> for FeedFormValues {
@@ -160,10 +160,10 @@ impl From<FeedData> for FeedFormValues {
             }
         };
 
-        let filter_cr = value
-            .filters
-            .iter()
-            .any(|filter| matches!(filter, Filter::RemoveCarriageReturn));
+        // let filter_cr = value
+        //     .filters
+        //     .iter()
+        //     .any(|filter| matches!(filter, Filter::RemoveCarriageReturn));
 
         Self {
             name: value.name,
@@ -171,7 +171,7 @@ impl From<FeedData> for FeedFormValues {
             source_link,
             // source_ttl,
             source_upload,
-            filter_cr: BoolEquiv::from_bool(filter_cr),
+            // filter_cr: BoolEquiv::from_bool(filter_cr),
         }
     }
 }
@@ -203,9 +203,9 @@ impl FeedFormValues {
         };
 
         let mut filters = Filters::default();
-        if self.filter_cr.as_bool() {
-            filters.0.push(Filter::RemoveCarriageReturn);
-        }
+        // if self.filter_cr.as_bool() {
+        //     filters.0.push(Filter::RemoveCarriageReturn);
+        // }
 
         if errors.is_empty() {
             Ok(FeedData {
@@ -246,22 +246,22 @@ pub fn feed_form(
     is_new: bool,
     errors: ValidationErrors,
 ) -> Markup {
-    let (name, feed_type, link, filter_cr) = match values {
+    let (name, feed_type, link) = match values {
         Some(FeedFormValues {
             name,
             source_type,
             source_link,
             // source_ttl,
             source_upload: _,
-            filter_cr,
+            // filter_cr,
         }) => (
             Some(name.as_str()),
             Some(*source_type),
             Some(source_link.as_str()),
             // source_ttl.as_str(),
-            filter_cr.as_bool(),
+            // filter_cr.as_bool(),
         ),
-        None => (None, None, None, false),
+        None => (None, None, None),
     };
 
     let submit_text = match is_new {
@@ -311,11 +311,11 @@ pub fn feed_form(
             }
 
             h3 {"Filters"}
-            label for="filter-cr" {
-                input #"filter-cr" name="filter-cr" type="checkbox" checked[filter_cr];
-                " Remove Carriage Returns (" code {"\\r"} ")"
-                (errors.render("filter-cr"))
-            }
+            // label for="filter-cr" {
+            //     input #"filter-cr" name="filter-cr" type="checkbox" checked[filter_cr];
+            //     " Remove Carriage Returns (" code {"\\r"} ")"
+            //     (errors.render("filter-cr"))
+            // }
 
             (submit_button(submit_text))
             (errors.render("general"))

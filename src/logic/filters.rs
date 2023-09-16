@@ -1,13 +1,14 @@
 use anyhow::anyhow;
 use bytes::Bytes;
-use icalendar::parser::Calendar;
+use icalendar::parser::{Calendar, unfold};
 
 use crate::data::filters::{Filter, Filters};
 
 use super::CalendarStats;
 
 pub fn apply_filters(data: Bytes, filters: &Filters) -> anyhow::Result<(Bytes, CalendarStats)> {
-    let data_string = std::str::from_utf8(data.as_ref())?.to_owned();
+    let data_string = std::str::from_utf8(data.as_ref())?;
+    let data_string = unfold(data_string);
     let data_string = filters.apply_pre_parse(data_string)?;
 
     let mut calendar = parse(&data_string)?;
@@ -58,13 +59,7 @@ impl FilterTrait for Filters {
 impl FilterTrait for Filter {
     fn apply_pre_parse(&self, text: String) -> anyhow::Result<String> {
         match self {
-            Filter::RemoveCarriageReturn => Ok(text
-                .chars()
-                .flat_map(|x| match x {
-                    '\r' => None,
-                    other => Some(other),
-                })
-                .collect()),
+            _ => Ok(text)
         }
     }
 }

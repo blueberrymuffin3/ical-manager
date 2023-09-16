@@ -9,7 +9,6 @@ use sqlx::{
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Filter {
-    RemoveCarriageReturn,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -21,13 +20,13 @@ impl Filters {
     ) -> anyhow::Result<Self> {
         let mut filters: Filters = Default::default();
 
-        let filter_remove_carrige_return =
-            sqlx::query_scalar!("SELECT id FROM FilterRemoveCarriageReturn WHERE id = ?", id)
-                .fetch_optional(&mut *txn)
-                .await?;
-        if let Some(_) = filter_remove_carrige_return {
-            filters.0.push(Filter::RemoveCarriageReturn);
-        }
+        // let filter_remove_carrige_return =
+        //     sqlx::query_scalar!("SELECT id FROM FilterRemoveCarriageReturn WHERE id = ?", id)
+        //         .fetch_optional(&mut *txn)
+        //         .await?;
+        // if let Some(_) = filter_remove_carrige_return {
+        //     filters.0.push(Filter::RemoveCarriageReturn);
+        // }
 
         Ok(filters)
     }
@@ -37,17 +36,18 @@ impl Filters {
         txn: &mut sqlx::Transaction<'_, Sqlite>,
         id: i64,
     ) -> anyhow::Result<()> {
-        sqlx::query!("DELETE FROM FilterRemoveCarriageReturn WHERE id = ?", id)
-            .fetch_all(&mut *txn)
-            .await?;
+        // sqlx::query!("DELETE FROM FilterRemoveCarriageReturn WHERE id = ?", id)
+        //     .fetch_all(&mut *txn)
+        //     .await?;
 
         for filter in &self.0 {
             match filter {
-                Filter::RemoveCarriageReturn => {
-                    sqlx::query!("INSERT INTO FilterRemoveCarriageReturn(id) VALUES (?)", id)
-                        .fetch_all(&mut *txn)
-                        .await?;
-                }
+                _ => todo!()
+                // Filter::RemoveCarriageReturn => {
+                //     sqlx::query!("INSERT INTO FilterRemoveCarriageReturn(id) VALUES (?)", id)
+                //         .fetch_all(&mut *txn)
+                //         .await?;
+                // }
             }
         }
 
