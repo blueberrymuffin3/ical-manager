@@ -50,7 +50,7 @@ impl SourceTrait for SourceHTTP {
             .with_context(|| format!("Error fetching {}", self.link))?;
 
         if !response.status().is_success() {
-            bail!("Unexpected response code: {:?}", response.status())
+            bail!("Unexpected response code: {}", response.status())
         }
 
         Ok(response

@@ -16,7 +16,7 @@ use self::filters::{apply_filters, FilterStats};
 pub struct CalendarStats {
     pub event_count: usize,
     pub size: usize,
-    pub cache_age: Option<Duration>,
+    pub cache_age: Duration,
 }
 
 pub async fn process_feed(
@@ -34,12 +34,12 @@ pub async fn process_feed(
             let age = Utc::now() - timestamp;
             
             if feed.data.source.is_expired(age) {
-                (None, None)
+                (None, Duration::zero())
             } else {
-                (Some(cache_data), Some(age))
+                (Some(cache_data), age)
             }
         }
-        None => (None, None),
+        None => (None, Duration::zero()),
     };
 
     let data = match data {

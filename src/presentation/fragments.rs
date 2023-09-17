@@ -108,23 +108,20 @@ fn feed_status_result(status: FeedStatus, text: impl Render) -> Markup {
     feed_status_base(status, text, None)
 }
 
-struct ApproxDuration(Option<Duration>);
+struct ApproxDuration(Duration);
 
 impl Display for ApproxDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Some(d) => {
-                if d >= Duration::days(1) {
-                    write!(f, "{}d ago", d.num_days())
-                } else if d >= Duration::hours(1) {
-                    write!(f, "{}h ago", d.num_hours())
-                } else if d >= Duration::minutes(1) {
-                    write!(f, "{}m ago", d.num_minutes())
-                } else {
-                    write!(f, "{}s ago", d.num_seconds())
-                }
-            }
-            None => write!(f, "now"),
+        if self.0 >= Duration::days(1) {
+            write!(f, "{}d ago", self.0.num_days())
+        } else if self.0 >= Duration::hours(1) {
+            write!(f, "{}h ago", self.0.num_hours())
+        } else if self.0 >= Duration::minutes(1) {
+            write!(f, "{}m ago", self.0.num_minutes())
+        } else if self.0 >= Duration::seconds(1) {
+            write!(f, "{}s ago", self.0.num_seconds())
+        } else {
+            write!(f, "now")
         }
     }
 }
