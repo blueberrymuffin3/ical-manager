@@ -1,5 +1,6 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
+use chrono::Duration;
 use icondata::LuIcon;
 use maud::{html, Markup, Render};
 use sqlx::SqlitePool;
@@ -107,11 +108,36 @@ fn feed_status_result(status: FeedStatus, text: impl Render) -> Markup {
     feed_status_base(status, text, None)
 }
 
+struct ApproxDuration(Option<Duration>);
+
+impl Display for ApproxDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(d) => {
+                if d >= Duration::days(1) {
+                    write!(f, "{}d ago", d.num_days())
+                } else if d >= Duration::hours(1) {
+                    write!(f, "{}h ago", d.num_hours())
+                } else if d >= Duration::minutes(1) {
+                    write!(f, "{}m ago", d.num_minutes())
+                } else {
+                    write!(f, "{}s ago", d.num_seconds())
+                }
+            }
+            None => write!(f, "now"),
+        }
+    }
+}
+
 pub async fn feed_status(pool: &SqlitePool, id: i64) -> anyhow::Result<Markup> {
     match get_feed_status(pool, id).await {
         Ok(Some((_data, stats))) => Ok(feed_status_result(
             FeedStatus::Ok,
-            format_args!("Updated now, {} events", stats.event_count),
+            format_args!(
+                "Updated {}, {} events",
+                ApproxDuration(stats.cache_age),
+                stats.event_count
+            ),
         )),
         Ok(None) => Ok(feed_status_result(FeedStatus::Error, "Not Found")),
         Err(err) => Ok(feed_status_result(FeedStatus::Error, format_args!("{err}"))),
@@ -127,7 +153,7 @@ async fn get_feed_status(
     txn.rollback().await?;
 
     match feed {
-        Some(feed) => Ok(Some(process_feed(&feed).await?)),
+        Some(feed) => Ok(Some(process_feed(&feed, pool).await?)),
         None => Ok(None),
     }
 }

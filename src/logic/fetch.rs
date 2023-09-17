@@ -1,8 +1,8 @@
-use anyhow::Context;
+use anyhow::{Context, bail};
 use async_trait::async_trait;
 use bytes::Bytes;
 
-use crate::data::source::{Source, SourceFile, SourceHTTP};
+use crate::data::{source::{Source, SourceFile, SourceHTTP}, cache::FetchCacheEntry};
 
 #[async_trait]
 pub trait SourceTrait {
@@ -36,6 +36,6 @@ impl SourceTrait for SourceHTTP {
 #[async_trait]
 impl SourceTrait for SourceFile {
     async fn fetch(&self) -> anyhow::Result<Bytes> {
-        self.contents.clone().context("Missing file contents")
+        bail!("Uploaded file is missing");
     }
 }

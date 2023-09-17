@@ -2,9 +2,10 @@ mod ttl;
 
 use anyhow::{anyhow, bail};
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use sqlx::{decode::Decode, types::Type, ColumnIndex, FromRow, Row, Sqlite, Transaction};
 
-use super::feed::FeedUpdateError;
+use super::{cache::FetchCacheEntry, feed::FeedUpdateError};
 
 #[derive(Debug, Clone)]
 pub struct SourceHTTP {
@@ -13,6 +14,7 @@ pub struct SourceHTTP {
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
+    /// Only used for upserts, always None for selects
     pub contents: Option<Bytes>,
 }
 
@@ -28,14 +30,12 @@ impl Source {
             sqlx::query_as!(SourceHTTP, "SELECT link FROM SourceHTTP WHERE id = ?", id)
                 .fetch_optional(&mut *txn)
                 .await?,
-            sqlx::query!("SELECT contents FROM SourceFile WHERE id = ?", id)
+            sqlx::query!("SELECT id FROM SourceFile WHERE id = ?", id)
                 .fetch_optional(&mut *txn)
                 .await?,
         ) {
             (Some(source_http), None) => Ok(Self::HTTP(source_http)),
-            (None, Some(source_file)) => Ok(Self::File(SourceFile {
-                contents: Some(source_file.contents.into()),
-            })),
+            (None, Some(_)) => Ok(Self::File(SourceFile { contents: None })),
             _ => bail!("Could not decode source from database: source count != 1"),
         }
     }
@@ -64,35 +64,22 @@ impl Source {
                     .await?;
             }
             Source::File(SourceFile { contents }) => {
-                match contents {
-                    Some(contents) => {
-                        let contents = contents.to_vec();
-                        sqlx::query!(
-                            "INSERT INTO SourceFile(id, contents) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET contents = excluded.contents",
-                            id,
-                            contents
-                        )
-                        .fetch_all(&mut *txn)
-                        .await?;
-                    }
-                    None => {
-                        sqlx::query_scalar!("SELECT id FROM SourceFile WHERE id = ?", id)
-                            .fetch_optional(&mut *txn)
-                            .await?
-                            .ok_or(FeedUpdateError::FileSourceMissingFileError)?;
-                    }
-                }
+                sqlx::query!(
+                    "INSERT INTO SourceFile(id) VALUES (?) ON CONFLICT(id) DO NOTHING",
+                    id,
+                )
+                .fetch_all(&mut *txn)
+                .await?;
 
-                // if let Some(contents) = contents {
-                //     let contents = contents.to_vec();
-                //     sqlx::query!(
-                //         "UPDATE SourceFile SET contents = ? WHERE id = ?",
-                //         contents,
-                //         id,
-                //     )
-                //     .fetch_all(&mut *txn)
-                //     .await?;
-                // }
+                if let Some(contents) = contents {
+                    FetchCacheEntry {
+                        id,
+                        timestamp: Utc::now(),
+                        data: contents.clone(),
+                    }
+                    .upsert(&mut *txn)
+                    .await?;
+                }
             }
         }
 
@@ -118,14 +105,5 @@ where
                 anyhow!("Could not decode source from database: source count != 1").into(),
             )),
         }
-
-        // match (source_link, ttl_seconds) {
-        //     (Some(source_link), Some(ttl)) => Ok(Source::Url(SourceUrl { source_link, ttl })),
-        //     (None, None) => Ok(Source::File),
-        //     _ => Err(sqlx::Error::ColumnDecode {
-        //         index: "source_link".to_owned(),
-        //         source: anyhow!("Could not decode source from database").into(),
-        //     }),
-        // }
     }
 }

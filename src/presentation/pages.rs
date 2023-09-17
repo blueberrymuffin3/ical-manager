@@ -170,7 +170,7 @@ pub async fn export(
         ));
     };
 
-    let (data, _stats) = process_feed(&feed).await?;
+    let (data, _stats) = process_feed(&feed, &pool).await?;
 
     Ok(([(CONTENT_TYPE, "text/calendar")], data).into_response())
 }

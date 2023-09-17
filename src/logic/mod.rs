@@ -3,29 +3,71 @@ mod filters;
 
 use anyhow::Context;
 use bytes::Bytes;
+use chrono::{Duration, Utc};
+use sqlx::{Executor, Sqlite};
 
-use crate::data::feed::Feed;
+use crate::data::{cache::FetchCacheEntry, feed::Feed};
 
 use fetch::SourceTrait;
 
-use self::filters::apply_filters;
+use self::filters::{apply_filters, FilterStats};
 
 #[derive(Debug)]
 pub struct CalendarStats {
     pub event_count: usize,
     pub size: usize,
+    pub cache_age: Option<Duration>,
 }
 
-pub async fn process_feed(feed: &Feed) -> anyhow::Result<(Bytes, CalendarStats)> {
-    let data = feed
-        .data
-        .source
-        .fetch()
-        .await
-        .context("Error fetching feed")?;
+pub async fn process_feed(
+    feed: &Feed,
+    executor: impl Executor<'_, Database = Sqlite> + Copy,
+) -> anyhow::Result<(Bytes, CalendarStats)> {
+    let cache_entry = FetchCacheEntry::select_by_id(feed.id, executor).await?;
 
-    let result =
+    let (data, cache_age) = match cache_entry {
+        Some(FetchCacheEntry {
+            id: _,
+            timestamp,
+            data: cache_data,
+        }) => {
+            // TODO: Return None if expired
+            (Some(cache_data), Some(Utc::now() - timestamp))
+        }
+        None => (None, None),
+    };
+
+    let data = match data {
+        None => {
+            let data = feed
+                .data
+                .source
+                .fetch()
+                .await
+                .context("Error fetching feed")?;
+
+            FetchCacheEntry {
+                id: feed.id,
+                timestamp: Utc::now(),
+                data: data.clone(),
+            }
+            .upsert(executor)
+            .await?;
+
+            data
+        }
+        Some(data) => data,
+    };
+
+    let (data, FilterStats { event_count, size }) =
         apply_filters(data, &feed.data.filters).context("Error processing feed contents")?;
 
-    Ok(result)
+    Ok((
+        data,
+        CalendarStats {
+            cache_age,
+            event_count,
+            size,
+        },
+    ))
 }

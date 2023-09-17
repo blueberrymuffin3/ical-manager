@@ -39,7 +39,7 @@ pub enum FeedUpdateError {
 }
 
 impl FeedData {
-    pub async fn create<'a>(self, txn: &mut Transaction<'_, Sqlite>) -> Result<Feed, FeedUpdateError> {
+    pub async fn create(self, txn: &mut Transaction<'_, Sqlite>) -> Result<Feed, FeedUpdateError> {
         let link_code = Uuid::new_v4().simple().to_string();
         let id = sqlx::query_scalar!(
             "INSERT INTO Feed(link_code, name) VALUES (?, ?) RETURNING id",
@@ -74,7 +74,7 @@ impl Feed {
         Ok(vec)
     }
 
-    pub async fn select_by_id<'a>(
+    pub async fn select_by_id(
         id: i64,
         txn: &mut Transaction<'_, Sqlite>,
     ) -> anyhow::Result<Option<Feed>> {
@@ -92,7 +92,7 @@ impl Feed {
         Ok(Some(Feed::from_record(&mut *txn, record).await?))
     }
 
-    pub async fn select_by_link_code<'a>(
+    pub async fn select_by_link_code(
         link_code: &str,
         txn: &mut Transaction<'_, Sqlite>,
     ) -> anyhow::Result<Option<Feed>> {
@@ -110,7 +110,7 @@ impl Feed {
         Ok(Some(Feed::from_record(&mut *txn, record).await?))
     }
 
-    pub async fn update<'a>(&self, txn: &mut Transaction<'_, Sqlite>) -> Result<(), FeedUpdateError> {
+    pub async fn update(&self, txn: &mut Transaction<'_, Sqlite>) -> Result<(), FeedUpdateError> {
         let id = sqlx::query_scalar!(
             "UPDATE Feed SET link_code = ?, name = ? WHERE id = ? RETURNING id",
             self.link_code,
@@ -122,21 +122,15 @@ impl Feed {
         .context("Error updating feed")?
         .expect("NOT NULL violated");
 
-        self.data
-            .source
-            .upsert(&mut *txn, id)
-            .await?;
-        self.data
-            .filters
-            .upsert(&mut *txn, id)
-            .await?;
+        self.data.source.upsert(&mut *txn, id).await?;
+        self.data.filters.upsert(&mut *txn, id).await?;
 
         Ok(())
     }
 
-    pub async fn delete_by_id<'a>(
+    pub async fn delete_by_id(
         id: i64,
-        executor: impl Executor<'a, Database = Sqlite>,
+        executor: impl Executor<'_, Database = Sqlite>,
     ) -> sqlx::Result<bool> {
         Ok(sqlx::query_scalar!("DELETE FROM Feed WHERE id = ?", id)
             .fetch_optional(executor)

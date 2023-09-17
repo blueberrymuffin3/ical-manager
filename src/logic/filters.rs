@@ -4,9 +4,15 @@ use icalendar::parser::{Calendar, unfold};
 
 use crate::data::filters::{Filter, Filters};
 
-use super::CalendarStats;
 
-pub fn apply_filters(data: Bytes, filters: &Filters) -> anyhow::Result<(Bytes, CalendarStats)> {
+#[derive(Debug)]
+pub struct FilterStats {
+    pub event_count: usize,
+    pub size: usize,
+}
+
+
+pub fn apply_filters(data: Bytes, filters: &Filters) -> anyhow::Result<(Bytes, FilterStats)> {
     let data_string = std::str::from_utf8(data.as_ref())?;
     let data_string = unfold(data_string);
     let data_string = filters.apply_pre_parse(data_string)?;
@@ -17,7 +23,7 @@ pub fn apply_filters(data: Bytes, filters: &Filters) -> anyhow::Result<(Bytes, C
 
     let event_count = calendar.components.len();
     let bytes: Bytes = calendar.to_string().into_bytes().into();
-    let stats = CalendarStats {
+    let stats = FilterStats {
         event_count,
         size: bytes.len(),
     };

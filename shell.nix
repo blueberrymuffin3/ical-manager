@@ -6,7 +6,7 @@ pkgs.mkShell {
     pkgs.cargo-watch
     pkgs.cargo-expand
     pkgs.sqlx-cli
-
+    pkgs.sqlite-interactive
     
     pkgs.clang
     pkgs.mold
