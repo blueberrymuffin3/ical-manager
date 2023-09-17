@@ -60,10 +60,6 @@ pub async fn root(State(pool): State<SqlitePool>, hx_wrap: HxWrap) -> ServerResu
                 (icon(LuIcon::LuPlus))
                 " New"
             }
-
-            p {
-                "Note: feeds are only updated when requested to by your calendar app"
-            }
         ))
     }))
 }
