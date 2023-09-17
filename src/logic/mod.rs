@@ -31,8 +31,13 @@ pub async fn process_feed(
             timestamp,
             data: cache_data,
         }) => {
-            // TODO: Return None if expired
-            (Some(cache_data), Some(Utc::now() - timestamp))
+            let age = Utc::now() - timestamp;
+            
+            if feed.data.source.is_expired(age) {
+                (None, None)
+            } else {
+                (Some(cache_data), Some(age))
+            }
         }
         None => (None, None),
     };

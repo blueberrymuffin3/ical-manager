@@ -1,15 +1,14 @@
-mod ttl;
-
 use anyhow::{anyhow, bail};
 use bytes::Bytes;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sqlx::{decode::Decode, types::Type, ColumnIndex, FromRow, Row, Sqlite, Transaction};
 
-use super::{cache::FetchCacheEntry, feed::FeedUpdateError};
+use super::{cache::FetchCacheEntry, feed::FeedUpdateError, ttl::SourceTTL};
 
 #[derive(Debug, Clone)]
 pub struct SourceHTTP {
     pub link: String,
+    pub ttl: SourceTTL,
 }
 
 #[derive(Debug, Clone)]
@@ -27,9 +26,13 @@ pub enum Source {
 impl Source {
     pub(super) async fn select(txn: &mut Transaction<'_, Sqlite>, id: i64) -> anyhow::Result<Self> {
         match (
-            sqlx::query_as!(SourceHTTP, "SELECT link FROM SourceHTTP WHERE id = ?", id)
-                .fetch_optional(&mut *txn)
-                .await?,
+            sqlx::query_as!(
+                SourceHTTP,
+                "SELECT link, ttl as 'ttl: SourceTTL' FROM SourceHTTP WHERE id = ?",
+                id
+            )
+            .fetch_optional(&mut *txn)
+            .await?,
             sqlx::query!("SELECT id FROM SourceFile WHERE id = ?", id)
                 .fetch_optional(&mut *txn)
                 .await?,
@@ -58,8 +61,11 @@ impl Source {
         }
 
         match self {
-            Source::HTTP(SourceHTTP { link }) => {
-                sqlx::query!("INSERT INTO SourceHttp(id, link) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET link = excluded.link", id, link)
+            Source::HTTP(SourceHTTP { link, ttl }) => {
+                sqlx::query!(
+                    "INSERT INTO SourceHttp(id, link, ttl) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET link = excluded.link, ttl = excluded.ttl",
+                    id, link, ttl
+                )
                     .fetch_all(&mut *txn)
                     .await?;
             }

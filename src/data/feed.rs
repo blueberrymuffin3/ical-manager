@@ -62,7 +62,7 @@ impl FeedData {
 
 impl Feed {
     pub async fn select(txn: &mut Transaction<'_, Sqlite>) -> anyhow::Result<Vec<Feed>> {
-        let records = sqlx::query_as!(FeedRecord, "SELECT id, link_code, name FROM Feed")
+        let records = sqlx::query_as!(FeedRecord, "SELECT id, link_code, name FROM Feed ORDER BY id")
             .fetch_all(&mut *txn)
             .await?;
         let mut vec = Vec::with_capacity(records.len());

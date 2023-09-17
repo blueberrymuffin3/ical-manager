@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use axum_typed_multipart::{TryFromField, TryFromMultipart, TypedMultipartError};
@@ -40,8 +42,9 @@ impl BoolEquiv for Option<MultipartCheckbox> {
 use crate::{
     data::{
         feed::{FeedData, FeedUpdateError},
-        filters::{Filter, Filters},
+        filters::Filters,
         source::{Source, SourceFile, SourceHTTP},
+        ttl::SourceTTL,
     },
     presentation::icon::icon,
     strum_util::IntoStrumStr,
@@ -147,17 +150,22 @@ pub struct FeedFormValues {
     pub source_type: FormFeedSourceType,
     pub source_link: String,
     pub source_upload: Option<Bytes>,
-    // pub source_ttl: String,
+    pub source_ttl: String,
     // pub filter_cr: Option<MultipartCheckbox>,
 }
 
 impl From<FeedData> for FeedFormValues {
     fn from(value: FeedData) -> Self {
-        let (source_type, source_link, source_upload) = match value.source {
-            Source::HTTP(SourceHTTP { link }) => (FormFeedSourceType::UrlSource, link, None),
-            Source::File(SourceFile { contents }) => {
-                (FormFeedSourceType::FileSource, String::new(), contents)
+        let (source_type, source_link, source_ttl, source_upload) = match value.source {
+            Source::HTTP(SourceHTTP { link, ttl }) => {
+                (FormFeedSourceType::UrlSource, link, ttl.to_string(), None)
             }
+            Source::File(SourceFile { contents }) => (
+                FormFeedSourceType::FileSource,
+                String::new(),
+                SourceTTL::default().to_string(),
+                contents,
+            ),
         };
 
         // let filter_cr = value
@@ -169,7 +177,7 @@ impl From<FeedData> for FeedFormValues {
             name: value.name,
             source_type,
             source_link,
-            // source_ttl,
+            source_ttl,
             source_upload,
             // filter_cr: BoolEquiv::from_bool(filter_cr),
         }
@@ -189,7 +197,7 @@ impl FeedFormValues {
             FormFeedSourceType::UrlSource => {
                 let source = SourceHTTP {
                     link: self.source_link.to_string(),
-                    // ttl: errors.unwrap_or_default("source-ttl", self.source_ttl.parse()),
+                    ttl: errors.unwrap_or_default("source-ttl", self.source_ttl.parse()),
                 };
                 if source.link.is_empty() {
                     errors.add("source-link", "Link must not be empty".to_owned());
@@ -239,29 +247,32 @@ fn submit_button(content: impl Render) -> Markup {
     )
 }
 
-const DURATION_6_HOURS: &str = "6h";
-
 pub fn feed_form(
     values: Option<&FeedFormValues>,
     is_new: bool,
     errors: ValidationErrors,
 ) -> Markup {
-    let (name, feed_type, link) = match values {
+    let (name, feed_type, link, ttl) = match values {
         Some(FeedFormValues {
             name,
             source_type,
             source_link,
-            // source_ttl,
+            source_ttl,
             source_upload: _,
             // filter_cr,
         }) => (
             Some(name.as_str()),
             Some(*source_type),
             Some(source_link.as_str()),
-            // source_ttl.as_str(),
+            Cow::Borrowed(source_ttl),
             // filter_cr.as_bool(),
         ),
-        None => (None, None, None),
+        None => (
+            None,
+            None,
+            None,
+            Cow::Owned(SourceTTL::default().to_string()),
+        ),
     };
 
     let submit_text = match is_new {
@@ -298,10 +309,10 @@ pub fn feed_form(
                 input #"source-link" name="source-link" type="text" placeholder="https://example.com/feed.ical" value=[link];
                 (errors.render("source-link"))
 
-                // label for="source-ttl" {"Minimum Update Period"}
-                // input #"source-ttl" name="source-ttl" type="text" value=(ttl) ;
-                // (errors.render("source-ttl"))
-                // p {"Enter a value like 1 day, 15min, 3h, etc..."}
+                label for="source-ttl" {"Minimum Update Period"}
+                input #"source-ttl" name="source-ttl" type="text" value=(ttl.as_ref()) ;
+                (errors.render("source-ttl"))
+                p {"Enter a value like 1 day, 15min, 3h, etc..."}
             }
 
             .hide data-show-for-id="source-type" data-show-for-value=(FormFeedSourceType::FileSource.into_strum_str()) {
