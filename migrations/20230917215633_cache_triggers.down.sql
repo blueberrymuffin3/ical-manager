@@ -1,0 +1,3 @@
+DROP TRIGGER SourceHttpDeleteFetchCachePurge;
+DROP TRIGGER SourceHttpUpdateFetchCachePurge;
+DROP TRIGGER SourceFileDeleteFetchCachePurge;
