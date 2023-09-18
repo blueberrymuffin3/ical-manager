@@ -15,7 +15,7 @@ use sqlx::{migrate, SqlitePool};
 use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
 
-use crate::presentation::auth::LOCATION_LOGIN;
+use crate::{presentation::auth::LOCATION_LOGIN, data::secrets::SecretReader};
 
 #[derive(axum::extract::FromRef, Clone)]
 struct AppState {
@@ -43,13 +43,13 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Error making AuthManager")?;
 
-    let cookie_key = std::env::var("COOKIE_KEY").context("Error loading COOKIE_KEY")?;
+    let cookie_key = SecretReader::read_or_gen(&pool).await?;
 
     // TODO: Save the key in the database
     let state: AppState = AppState {
         pool,
         auth,
-        cookie_key: cookie::Key::derive_from(cookie_key.as_bytes()),
+        cookie_key,
     };
 
     let app = Router::new()

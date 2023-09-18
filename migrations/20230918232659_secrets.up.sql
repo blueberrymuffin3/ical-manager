@@ -1,0 +1,4 @@
+CREATE TABLE Secrets (
+    id TEXT NOT NULL PRIMARY KEY,
+    value BLOB NOT NULL
+) STRICT;

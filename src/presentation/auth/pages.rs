@@ -103,7 +103,7 @@ async fn callback(
     if params.state.secret() != csrf.secret() {
         return Err(InternalServerError(make_error_page_auto(
             html!("Invalid CSRF Token"),
-            StatusCode::BAD_GATEWAY,
+            StatusCode::BAD_REQUEST,
         )));
     }
 
