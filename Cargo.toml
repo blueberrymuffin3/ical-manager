@@ -15,10 +15,13 @@ chrono = "0.4.26"
 cookie = { version = "0.17.0", features = ["key-expansion"] }
 dotenvy = "0.15.7"
 env_logger = "0.10.0"
+futures = "0.3.28"
 http = "0.2.9"
 humantime = "2.1.0"
+hyper = "0.14.27"
 icalendar = "0.15.7"
 icondata = { version = "0.0.7", features = ["LuCopy", "LuEdit", "LuRefreshCw", "LuTrash", "LuPlus"] }
+ip_rfc = "0.1.0"
 itertools = "0.11.0"
 log = "0.4.20"
 maud = { version = "0.25.0", features = ["axum"] }
@@ -36,5 +39,5 @@ tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.14"
 tower-cookies = { version = "0.9.0", features = ["signed"] }
 tower-http = { version = "0.4.3", features = ["fs"] }
-unwrap-infallible = "0.1.5"
+url = "2.4.1"
 uuid = { version = "1.4.1", features = ["v4"] }

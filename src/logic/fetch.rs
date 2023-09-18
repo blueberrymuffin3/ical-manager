@@ -1,10 +1,15 @@
-use anyhow::{bail, Context};
+use std::sync::Arc;
+
+use anyhow::bail;
 use async_trait::async_trait;
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder};
+use url::Url;
 
 use crate::data::source::{Source, SourceFile, SourceHTTP};
+
+use super::ssrf_guard::{check_url, ssrf_safe_redirect_policy, SSRFSafeResolver};
 
 #[async_trait]
 pub trait SourceTrait {
@@ -32,6 +37,13 @@ impl SourceTrait for Source {
 const HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
     ClientBuilder::new()
         .timeout(std::time::Duration::from_secs(20))
+        .dns_resolver(Arc::new(SSRFSafeResolver))
+        .redirect(ssrf_safe_redirect_policy())
+        .user_agent(concat!(
+            env!("CARGO_PKG_NAME"),
+            "/",
+            env!("CARGO_PKG_VERSION"),
+        ))
         .build()
         .expect("Invalid reqwest client config")
 });
@@ -43,20 +55,15 @@ impl SourceTrait for SourceHTTP {
     }
 
     async fn fetch(&self) -> anyhow::Result<Bytes> {
-        let response = HTTP_CLIENT
-            .get(&self.link)
-            .send()
-            .await
-            .with_context(|| format!("Error fetching {}", self.link))?;
+        let url: Url = self.link.parse()?;
+        check_url(&url)?;
 
+        let response = HTTP_CLIENT.get(url).send().await?;
         if !response.status().is_success() {
             bail!("Unexpected response code: {}", response.status())
         }
 
-        Ok(response
-            .bytes()
-            .await
-            .context("Error downloading response")?)
+        Ok(response.bytes().await?)
     }
 }
 
