@@ -102,7 +102,7 @@ impl AuthManager {
         let id_token_claims = response
             .extra_fields()
             .id_token()
-            .context("ID Token not recieved")?
+            .context("ID Token not received")?
             .claims(&id_token_verifier, &nonce)
             .context("Id Token invalid")?;
 

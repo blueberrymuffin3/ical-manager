@@ -1,0 +1,6 @@
+UPDATE Feed SET user_id = NULL;
+ALTER TABLE Feed DROP COLUMN user_id;
+
+DROP TABLE UserOAuthLink;
+DROP TABLE User;
+
