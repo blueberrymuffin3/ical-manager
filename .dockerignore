@@ -1,0 +1,8 @@
+*
+!src
+!migrations
+!assets
+!.cargo
+!Cargo.toml
+!Cargo.lock
+!.dockerenv
