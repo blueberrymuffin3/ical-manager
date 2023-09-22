@@ -14,10 +14,7 @@ pub struct UserData {
 }
 
 impl User {
-    pub async fn create(
-        &self,
-        executor: impl Executor<'_, Database = Sqlite>,
-    ) -> sqlx::Result<User> {
+    pub async fn create(executor: impl Executor<'_, Database = Sqlite>) -> sqlx::Result<User> {
         sqlx::query_as("INSERT INTO User DEFAULT VALUES RETURNING id, name, icon")
             .fetch_one(executor)
             .await
@@ -69,7 +66,7 @@ impl UserOAuthLink {
         .await
     }
 
-    pub async fn insert(&self, executor: impl Executor<'_, Database = Sqlite>) -> sqlx::Result<()> {
+    pub async fn create(&self, executor: impl Executor<'_, Database = Sqlite>) -> sqlx::Result<()> {
         sqlx::query!(
             "INSERT INTO UserOAuthLink(id, issuer, subject) VALUES (?, ?, ?)",
             self.id,

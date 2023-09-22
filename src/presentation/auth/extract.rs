@@ -3,21 +3,28 @@ use std::{borrow::Cow, str::FromStr};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use axum::{
-    extract::FromRequestParts,
+    extract::{FromRef, FromRequestParts},
     http::request::Parts,
     response::{IntoResponse, Response},
 };
 use http::{header::LOCATION, StatusCode, Uri};
-use tower_cookies::Cookies;
+use sqlx::SqlitePool;
 
-use crate::presentation::{
-    error::{make_error_page_auto, InternalServerError},
-    htmx::is_htmx_request,
+use crate::{
+    data::user::User,
+    presentation::{
+        cookies::ReadCookie,
+        error::{make_error_page_auto, InternalServerError},
+        htmx::is_htmx_request,
+    },
 };
 
-use super::pages::{LoginPageParams, LOCATION_LOGIN};
+use super::{
+    logic::AuthClaim,
+    pages::{LoginPageParams, LOCATION_LOGIN},
+};
 
-pub struct Authenticated;
+pub struct Authenticated(pub User);
 pub struct UnauthenticatedResponse {
     return_to: String,
     is_htmx: bool,
@@ -55,55 +62,84 @@ impl IntoResponse for UnauthenticatedResponse {
     }
 }
 
-#[async_trait]
-impl<S> FromRequestParts<S> for UnauthenticatedResponse {
-    /// If the extractor fails it'll use this "rejection" type. A rejection is
-    /// a kind of error that can be converted into a response.
-    type Rejection = InternalServerError;
+fn make_unauthenticated_response(
+    parts: &Parts,
+) -> Result<UnauthenticatedResponse, InternalServerError> {
+    let is_htmx = is_htmx_request(&parts.headers);
 
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let is_htmx = is_htmx_request(&parts.headers);
+    let return_to = if is_htmx {
+        let uri = parts
+            .headers
+            .get("HX-Current-URL")
+            .context("HX-Current-URL header missing")?
+            .to_str()
+            .context("Invalid HX-Current-URL")?;
+        let url = Uri::from_str(uri).context("HX-Current-URL")?;
+        Cow::Owned(url)
+    } else {
+        Cow::Borrowed(&parts.uri)
+    };
 
-        let return_to = if is_htmx {
-            let uri = parts
-                .headers
-                .get("HX-Current-URL")
-                .context("HX-Current-URL header missing")?
-                .to_str()
-                .context("Invalid HX-Current-URL")?;
-            let url = Uri::from_str(uri).context("HX-Current-URL")?;
-            Cow::Owned(url)
-        } else {
-            Cow::Borrowed(&parts.uri)
-        };
+    let return_to = return_to
+        .as_ref()
+        .path_and_query()
+        .context("Invalid return url")?;
 
-        let return_to = return_to
-            .as_ref()
-            .path_and_query()
-            .context("Invalid return url")?;
+    Ok(UnauthenticatedResponse {
+        is_htmx,
+        return_to: return_to.to_string(),
+    })
+}
 
-        Ok(UnauthenticatedResponse {
-            is_htmx,
-            return_to: return_to.to_string(),
-        })
+pub enum AuthenticatedRejection {
+    UnauthenticatedResponse(UnauthenticatedResponse),
+    InternalServerError(InternalServerError),
+}
+impl IntoResponse for AuthenticatedRejection {
+    fn into_response(self) -> Response {
+        match self {
+            AuthenticatedRejection::UnauthenticatedResponse(res) => res.into_response(),
+            AuthenticatedRejection::InternalServerError(res) => res.into_response(),
+        }
     }
 }
 
 #[async_trait]
 impl<S> FromRequestParts<S> for Authenticated
 where
-    S:,
+    S: Send + Sync,
+    ReadCookie<AuthClaim>: FromRequestParts<S>,
+    SqlitePool: FromRef<S>,
 {
-    type Rejection = Result<UnauthenticatedResponse, InternalServerError>;
+    type Rejection = AuthenticatedRejection;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let cookies = Cookies::from_request_parts(parts, &())
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let auth_claim = ReadCookie::<AuthClaim>::from_request_parts(parts, state)
             .await
-            .map_err(|x| Err(InternalServerError(x.into_response())))?;
+            .map_err(|err| {
+                AuthenticatedRejection::InternalServerError(InternalServerError(
+                    err.into_response(),
+                ))
+            })?
+            .0;
 
-        log::info!("Cookies are {cookies:?}");
+        dbg!(&auth_claim);
 
-        // Ok(Authenticated)
-        return Err(UnauthenticatedResponse::from_request_parts(parts, &()).await);
+        let pool = SqlitePool::from_ref(state);
+
+        let user = match auth_claim {
+            Some(claim) => User::select_by_id(claim.user_id, &pool)
+                .await
+                .map_err(|err| AuthenticatedRejection::InternalServerError(err.into()))?,
+            None => None,
+        };
+
+        match user {
+            Some(user) => Ok(Self(user)),
+            None => match make_unauthenticated_response(&parts) {
+                Ok(res) => Err(AuthenticatedRejection::UnauthenticatedResponse(res)),
+                Err(err) => Err(AuthenticatedRejection::InternalServerError(err)),
+            },
+        }
     }
 }

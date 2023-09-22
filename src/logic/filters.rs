@@ -1,16 +1,14 @@
 use anyhow::anyhow;
 use bytes::Bytes;
-use icalendar::parser::{Calendar, unfold};
+use icalendar::parser::{unfold, Calendar};
 
 use crate::data::filters::{Filter, Filters};
-
 
 #[derive(Debug)]
 pub struct FilterStats {
     pub event_count: usize,
     pub size: usize,
 }
-
 
 pub fn apply_filters(data: Bytes, filters: &Filters) -> anyhow::Result<(Bytes, FilterStats)> {
     let data_string = std::str::from_utf8(data.as_ref())?;
@@ -65,7 +63,7 @@ impl FilterTrait for Filters {
 impl FilterTrait for Filter {
     fn apply_pre_parse(&self, text: String) -> anyhow::Result<String> {
         match self {
-            _ => Ok(text)
+            _ => Ok(text),
         }
     }
 }

@@ -15,7 +15,7 @@ use sqlx::{migrate, SqlitePool};
 use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
 
-use crate::{presentation::auth::LOCATION_LOGIN, data::secrets::SecretReader};
+use crate::{data::secrets::SecretReader, presentation::auth::LOCATION_LOGIN};
 
 #[derive(axum::extract::FromRef, Clone)]
 struct AppState {

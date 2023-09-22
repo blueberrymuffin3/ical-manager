@@ -4,6 +4,7 @@ use std::{
     marker::{PhantomData, Send},
 };
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use axum::{
     extract::{FromRef, FromRequestParts},
@@ -14,7 +15,7 @@ use axum::{
 use openidconnect::{CsrfToken, Nonce};
 use tower_cookies::{
     cookie::{Expiration, SameSite},
-    Cookie, Cookies, Key,
+    Cookie, Cookies, Key, SignedCookies,
 };
 
 fn new_cookie<'c, N, V>(name: N, value: V) -> Cookie<'c>
@@ -25,15 +26,19 @@ where
     let mut cookie = Cookie::new(name, value);
     cookie.set_same_site(SameSite::Lax);
     cookie.set_expires(Expiration::Session);
+    cookie.set_path("/");
     cookie
 }
 
 pub trait CookieType: Sized {
     fn name() -> &'static str;
-    fn generate() -> Self;
-    type Rejection: IntoResponse;
+    type Rejection: Into<anyhow::Error>;
     fn encode(&self) -> String;
     fn decode(value: &str) -> Result<Self, Self::Rejection>;
+}
+
+pub trait CookieTypeGenerate: CookieType {
+    fn generate() -> Self;
 }
 
 impl CookieType for CsrfToken {
@@ -49,7 +54,9 @@ impl CookieType for CsrfToken {
     fn encode(&self) -> String {
         self.secret().to_owned()
     }
+}
 
+impl CookieTypeGenerate for CsrfToken {
     fn generate() -> Self {
         CsrfToken::new_random()
     }
@@ -68,9 +75,24 @@ impl CookieType for Nonce {
     fn encode(&self) -> String {
         self.secret().to_owned()
     }
+}
 
+impl CookieTypeGenerate for Nonce {
     fn generate() -> Self {
         Nonce::new_random()
+    }
+}
+
+fn read_cookie<T: CookieType>(cookies: &SignedCookies) -> Option<T> {
+    match cookies.get(T::name()) {
+        Some(cookie) => match T::decode(cookie.value()) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                log::error!("Error decoding cookie {}: {:?}", T::name(), anyhow!(err));
+                None
+            }
+        },
+        None => None,
     }
 }
 
@@ -80,7 +102,7 @@ pub struct AutoCookie<T>(pub T);
 impl<S: Send + Sync, T> FromRequestParts<S> for AutoCookie<T>
 where
     tower_cookies::Key: FromRef<S>,
-    T: CookieType,
+    T: CookieTypeGenerate,
 {
     type Rejection = Response;
 
@@ -91,26 +113,26 @@ where
             .map_err(IntoResponse::into_response)?
             .signed(&key);
 
-        let value = match cookies.get(T::name()) {
-            Some(cookie) => T::decode(cookie.value()).map_err(IntoResponse::into_response)?,
+        let value = match read_cookie(&cookies) {
+            Some(value) => value,
             None => {
-                let token = T::generate();
-                let cookie = new_cookie(T::name(), token.encode());
+                let value = T::generate();
+                let cookie = new_cookie(T::name(), value.encode());
                 cookies.add(cookie);
-                token
+                value
             }
         };
         Ok(Self(value))
     }
 }
 
-pub struct NewCookie<T>(pub T);
+pub struct GenerateNewCookie<T>(pub T);
 
 #[async_trait]
-impl<S: Send + Sync, T> FromRequestParts<S> for NewCookie<T>
+impl<S: Send + Sync, T> FromRequestParts<S> for GenerateNewCookie<T>
 where
     tower_cookies::Key: FromRef<S>,
-    T: CookieType,
+    T: CookieTypeGenerate,
 {
     type Rejection = Response;
 
@@ -124,35 +146,6 @@ where
         let value = T::generate();
         let cookie = new_cookie(T::name(), value.encode());
         cookies.add(cookie);
-        Ok(Self(value))
-    }
-}
-
-pub struct DeleteCookie<T>(pub Option<T>);
-
-#[async_trait]
-impl<S: Send + Sync, T> FromRequestParts<S> for DeleteCookie<T>
-where
-    tower_cookies::Key: FromRef<S>,
-    T: CookieType,
-{
-    type Rejection = Response;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let key = Key::from_ref(state);
-        let cookies = Cookies::from_request_parts(parts, state)
-            .await
-            .map_err(IntoResponse::into_response)?
-            .signed(&key);
-
-        let value = match cookies.get(T::name()) {
-            Some(cookie) => {
-                let value = T::decode(cookie.value()).map_err(IntoResponse::into_response)?;
-                cookies.remove(cookie);
-                Some(value)
-            }
-            None => None,
-        };
         Ok(Self(value))
     }
 }
@@ -174,11 +167,7 @@ where
             .map_err(IntoResponse::into_response)?
             .signed(&key);
 
-        let value = match cookies.get(T::name()) {
-            Some(cookie) => Some(T::decode(cookie.value()).map_err(IntoResponse::into_response)?),
-            None => None,
-        };
-        Ok(Self(value))
+        Ok(Self(read_cookie(&cookies)))
     }
 }
 
@@ -195,8 +184,7 @@ impl<T: CookieType + 'static> SetCookie<T> {
             .add(new_cookie(T::name(), value.encode()))
     }
     pub fn delete(&self) {
-        self.cookies
-            .remove(new_cookie(T::name(), T::generate().encode()))
+        self.cookies.remove(new_cookie(T::name(), ""))
     }
 }
 

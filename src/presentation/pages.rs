@@ -9,7 +9,7 @@ use icondata::LuIcon;
 use maud::{html, Markup};
 use sqlx::SqlitePool;
 
-use crate::{data::feed::Feed, logic::process_feed};
+use crate::{data::feed::Feed, logic::process_feed, AppState};
 
 use super::{
     auth::Authenticated,
@@ -140,10 +140,16 @@ pub async fn feed_create_post(
     }
 }
 
-#[axum::debug_handler]
-pub async fn test(Authenticated: Authenticated) -> ServerResult<Response> {
+#[axum::debug_handler(state = AppState)]
+pub async fn test(Authenticated(user): Authenticated) -> ServerResult<Response> {
     Ok(layout(html!(
-        h2 { "Hello World!" }
+        p {
+            "Hello, "
+            img src=[user.data.icon] width="16" {}
+            " "
+            (user.data.name.as_deref().unwrap_or("Unknown"))
+            "!"
+        }
     ))
     .into_response())
 }

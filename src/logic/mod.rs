@@ -33,7 +33,7 @@ pub async fn process_feed(
             data: cache_data,
         }) => {
             let age = Utc::now() - timestamp;
-            
+
             if feed.data.source.is_expired(age) {
                 (None, Duration::zero())
             } else {

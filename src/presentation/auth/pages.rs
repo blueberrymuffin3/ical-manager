@@ -1,23 +1,31 @@
 use std::convert::Infallible;
 
 use axum::{
+    debug_handler,
     extract::{FromRef, Path, Query, State},
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
-use http::StatusCode;
+use http::{header::LOCATION, StatusCode};
 use maud::html;
 use openidconnect::{AuthorizationCode, CsrfToken, Nonce};
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 
-use crate::presentation::{
-    cookies::{AutoCookie, CookieType, NewCookie, ReadCookie, SetCookie},
-    error::{make_error_page_auto, InternalServerError, ServerResult},
-    layout::layout,
+use crate::{
+    presentation::{
+        cookies::{AutoCookie, CookieType, GenerateNewCookie, ReadCookie, SetCookie},
+        error::{make_error_page_auto, InternalServerError, ServerResult},
+        layout::layout,
+    },
+    AppState,
 };
 
-use super::{logic::AuthProvider, AuthManager};
+use super::{
+    logic::{AuthClaim, AuthProvider},
+    AuthManager,
+};
 
 pub const LOCATION_LOGIN: &str = "/login";
 
@@ -30,10 +38,6 @@ struct ReturnToCookie(String);
 impl CookieType for ReturnToCookie {
     fn name() -> &'static str {
         "return-to"
-    }
-
-    fn generate() -> Self {
-        Self("/".to_owned())
     }
 
     type Rejection = Infallible;
@@ -63,7 +67,7 @@ async fn do_login(
     Path(provider): Path<AuthProvider>,
     Query(params): Query<LoginPageParams>,
     AutoCookie(csrf): AutoCookie<CsrfToken>,
-    NewCookie(nonce): NewCookie<Nonce>,
+    GenerateNewCookie(nonce): GenerateNewCookie<Nonce>,
     set_return_to: SetCookie<ReturnToCookie>,
     State(manager): State<AuthManager>,
 ) -> ServerResult<impl IntoResponse> {
@@ -83,12 +87,16 @@ struct CallbackParams {
     state: CsrfToken,
 }
 
+#[debug_handler(state = AppState)]
 async fn callback(
     Path(provider): Path<AuthProvider>,
     Query(params): Query<CallbackParams>,
     ReadCookie(csrf): ReadCookie<CsrfToken>,
     ReadCookie(nonce): ReadCookie<Nonce>,
+    ReadCookie(return_to): ReadCookie<ReturnToCookie>,
+    set_auth_claim: SetCookie<AuthClaim>,
     State(auth_manager): State<AuthManager>,
+    State(db): State<SqlitePool>,
 ) -> ServerResult<Response> {
     let (csrf, nonce) = match (csrf, nonce) {
         (Some(csrf), Some(nonce)) => (csrf, nonce),
@@ -107,9 +115,20 @@ async fn callback(
         )));
     }
 
-    auth_manager.exchange(provider, params.code, nonce).await?;
+    let auth_claim = auth_manager
+        .setup_user(provider, params.code, nonce, &db)
+        .await?;
 
-    Ok("Hello World".into_response())
+    set_auth_claim.set(&auth_claim);
+
+    Ok((
+        StatusCode::FOUND,
+        [(
+            LOCATION,
+            return_to.as_ref().map(|x| x.0.as_str()).unwrap_or("/"),
+        )],
+    )
+        .into_response())
 }
 
 pub fn router<State>() -> Router<State>
@@ -117,6 +136,7 @@ where
     State: Clone + Send + Sync + 'static,
     tower_cookies::Key: FromRef<State>,
     AuthManager: FromRef<State>,
+    SqlitePool: FromRef<State>,
 {
     Router::<State>::new()
         .route("/", get(login))
