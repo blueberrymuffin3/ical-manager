@@ -13,7 +13,7 @@ use axum::{
 use presentation::auth::AuthManager;
 use sqlx::{migrate, SqlitePool};
 use tower_cookies::CookieManagerLayer;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, compression::CompressionLayer};
 
 use crate::{data::secrets::SecretReader, presentation::auth::LOCATION_LOGIN};
 
@@ -69,7 +69,8 @@ async fn main() -> anyhow::Result<()> {
             ServeDir::new("assets")
                 .not_found_service(get(|| ready(presentation::error::make_404()))),
         )
-        .with_state(state);
+        .with_state(state)
+        .layer(CompressionLayer::new());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     log::info!("listening on http://{}", addr);

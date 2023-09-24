@@ -38,6 +38,6 @@ thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1.14"
 tower-cookies = { version = "0.9.0", features = ["signed"] }
-tower-http = { version = "0.4.3", features = ["fs"] }
+tower-http = { version = "0.4.4", features = ["fs", "compression-br", "compression-gzip"] }
 url = "2.4.1"
 uuid = { version = "1.4.1", features = ["v4"] }
