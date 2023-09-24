@@ -45,7 +45,6 @@ async fn main() -> anyhow::Result<()> {
 
     let cookie_key = SecretReader::read_or_gen(&pool).await?;
 
-    // TODO: Save the key in the database
     let state: AppState = AppState {
         pool,
         auth,

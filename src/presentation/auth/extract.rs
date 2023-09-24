@@ -123,8 +123,6 @@ where
             })?
             .0;
 
-        dbg!(&auth_claim);
-
         let pool = SqlitePool::from_ref(state);
 
         let user = match auth_claim {

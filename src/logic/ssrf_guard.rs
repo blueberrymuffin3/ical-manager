@@ -36,13 +36,6 @@ impl Resolve for SSRFSafeResolver {
                 .map(|addrs| -> reqwest::dns::Addrs { Box::new(addrs.filter(|x| global(&x.ip()))) })
                 .map_err(|err| -> tower_http::BoxError { Box::new(err) })
         }))
-        // Box::pin(GaiResolver::new().call(name).map(|result| {
-        //     let addrs: Vec<_> = result?.collect();
-        //     let filtered: Vec<_> = addrs.iter().copied().filter(|x| global(&x.ip())).collect();
-        //     println!("{addrs:?} => {filtered:?}");
-        //     let a: Result<Box<(dyn Iterator<Item = std::net::SocketAddr> + std::marker::Send + 'static)>, _> = Ok(Box::new(filtered.into_iter()));
-        //     a
-        // }))
     }
 }
 
