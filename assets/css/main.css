@@ -1,6 +1,49 @@
+header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+header > .user-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 1.5rem;
+}
+
+header > .user-info > img {
+  border-radius: 100%;
+  width: 1.5em;
+  height: 1.5em;
+}
+
+header > .user-info > * {
+  margin: 0;
+}
+
 .small-button {
   padding: 0.5rem 1rem !important;
   font-size: 0.8rem !important;
+}
+
+button.login-button {
+  padding-left: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 1em;
+  align-items: center;
+  border: none;
+}
+
+button.login-button > img {
+  margin: 0;
+  height: 2.5em;
+  width: 2.5em;
 }
 
 svg.icon {

@@ -17,7 +17,7 @@ use crate::{
     presentation::{
         cookies::{AutoCookie, CookieType, GenerateNewCookie, ReadCookie, SetCookie},
         error::{make_error_page_auto, InternalServerError, ServerResult},
-        layout::layout,
+        layout::layout_no_user,
     },
     AppState,
 };
@@ -55,12 +55,20 @@ async fn login(Query(params): Query<LoginPageParams>) -> ServerResult<Response> 
     let params = serde_urlencoded::to_string(params)?;
     let make_target = move |name: &str, params: &str| format!("{LOCATION_LOGIN}/{name}?{params}");
 
-    Ok(layout(html!(
+    Ok(layout_no_user(html!(
         h2 { "Login" }
-        button hx-post=(make_target("github", &params)) {"GitHub"}
-        button hx-post=(make_target("google", &params)) {"Google"}
+        button."login-button" hx-post=(make_target("google", &params)) {
+            img src="/img/google.png" {}
+            "Sign in with Google"
+        }
     ))
     .into_response())
+}
+
+async fn do_logout(set_auth: SetCookie<AuthClaim>) -> ServerResult<Response> {
+    set_auth.delete();
+
+    Ok(([("HX-Location", "/login")]).into_response())
 }
 
 async fn do_login(
@@ -140,6 +148,7 @@ where
 {
     Router::<State>::new()
         .route("/", get(login))
+        .route("/logout", post(do_logout))
         .route("/:provider", post(do_login))
         .route("/:provider/callback", get(callback))
 }

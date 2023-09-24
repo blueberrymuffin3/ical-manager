@@ -306,7 +306,7 @@ pub fn feed_form(
 
             .hide data-show-for-id="source-type" data-show-for-value=(FormFeedSourceType::UrlSource.into_strum_str()) {
                 label for="source-link" {"Link"}
-                input #"source-link" name="source-link" type="text" placeholder="https://example.com/feed.ical" value=[link];
+                input #"source-link" name="source-link" type="text" placeholder="https://example.com/feed.ics" value=[link];
                 (errors.render("source-link"))
 
                 label for="source-ttl" {"Minimum Update Period"}

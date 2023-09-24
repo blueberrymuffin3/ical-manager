@@ -18,80 +18,95 @@ use super::{
     fragments,
     htmx::HxWrap,
     icon::{icon, icon_alt},
-    layout::layout,
+    layout::layout_user,
 };
 
-#[axum::debug_handler]
+#[axum::debug_handler(state=AppState)]
 pub async fn feed_status(
+    Authenticated(user): Authenticated,
     State(pool): State<SqlitePool>,
     Path((id,)): Path<(i64,)>,
 ) -> ServerResult<impl IntoResponse> {
-    Ok(fragments::feed_status(&pool, id).await?.into_response())
+    Ok(fragments::feed_status(&pool, user.id, id)
+        .await?
+        .into_response())
 }
 
-#[axum::debug_handler]
-pub async fn root(State(pool): State<SqlitePool>, hx_wrap: HxWrap) -> ServerResult<Markup> {
-    let feeds = Feed::select(&mut pool.begin().await?)
+#[axum::debug_handler(state=AppState)]
+pub async fn root(
+    State(pool): State<SqlitePool>,
+    hx_wrap: HxWrap,
+    Authenticated(user): Authenticated,
+) -> ServerResult<Markup> {
+    let feeds = Feed::select(&mut pool.begin().await?, user.id)
         .await
         .context("Error fetching feed list")?;
 
     let table = fragments::feed_table(&feeds);
 
     Ok(hx_wrap.wrap(table, |inner| {
-        layout(html!(
-            h2 {
-                "Feeds "
+        layout_user(
+            &user,
+            html!(
+                h2 {
+                    "Feeds "
 
-                button."small-button"."muted-button"."round-button"
-                    id="feed-spinner"
-                    hx-get="/"
-                    hx-target="#feeds-table"
-                    hx-swap="outerHTML"
-                    hx-indicator
-                {
-                    div."htmx-spinner" {
-                        (icon_alt(LuIcon::LuRefreshCw, "Refresh Feeds"))
+                    button."small-button"."muted-button"."round-button"
+                        id="feed-spinner"
+                        hx-get="/"
+                        hx-target="#feeds-table"
+                        hx-swap="outerHTML"
+                        hx-indicator
+                    {
+                        div."htmx-spinner" {
+                            (icon_alt(LuIcon::LuRefreshCw, "Refresh Feeds"))
+                        }
                     }
                 }
-            }
-            (inner)
+                (inner)
 
-            a."button" href="/feed/create" {
-                (icon(LuIcon::LuPlus))
-                " New"
-            }
-        ))
+                a."button" href="/feed/create" {
+                    (icon(LuIcon::LuPlus))
+                    " New"
+                }
+            ),
+        )
     }))
 }
 
-#[axum::debug_handler]
+#[axum::debug_handler(state=AppState)]
 pub async fn feed_edit_get(
+    Authenticated(user): Authenticated,
     State(pool): State<SqlitePool>,
     Path((id,)): Path<(i64,)>,
 ) -> ServerResult<Response> {
-    let Some(feed) = Feed::select_by_id(id, &mut pool.begin().await?).await? else {
+    let Some(feed) = Feed::select_by_id(user.id, id, &mut pool.begin().await?).await? else {
         return Ok(make_404());
     };
 
     let values: FeedFormValues = feed.data.into();
 
-    Ok(layout(html!(
-        h2 { "Edit Feed" }
-        (feed_form(Some(&values), false, ValidationErrors::default()))
-    ))
+    Ok(layout_user(
+        &user,
+        html!(
+            h2 { "Edit Feed" }
+            (feed_form(Some(&values), false, ValidationErrors::default()))
+        ),
+    )
     .into_response())
 }
 
-#[axum::debug_handler]
+#[axum::debug_handler(state=AppState)]
 pub async fn feed_edit_post(
+    Authenticated(user): Authenticated,
     State(pool): State<SqlitePool>,
     Path((id,)): Path<(i64,)>,
     TypedMultipart(form_values): TypedMultipart<FeedFormValues>,
 ) -> ServerResult<Response> {
     let mut txn = pool.begin().await?;
 
-    let Some(mut feed) = Feed::select_by_id(id, &mut txn).await? else {
-        return Ok(make_404());
+    let Some(mut feed) = Feed::select_by_id(user.id, id, &mut txn).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
     match form_values.try_into_feed_data() {
@@ -114,44 +129,34 @@ pub async fn feed_edit_post(
     }
 }
 
-#[axum::debug_handler]
-pub async fn feed_create_get() -> ServerResult<Response> {
-    Ok(layout(html!(
-        h2 { "Create Feed" }
-        (feed_form(None, true, ValidationErrors::default()))
-    ))
+#[axum::debug_handler(state=AppState)]
+pub async fn feed_create_get(Authenticated(user): Authenticated) -> ServerResult<Response> {
+    Ok(layout_user(
+        &user,
+        html!(
+            h2 { "Create Feed" }
+            (feed_form(None, true, ValidationErrors::default()))
+        ),
+    )
     .into_response())
 }
 
-#[axum::debug_handler]
+#[axum::debug_handler(state=AppState)]
 pub async fn feed_create_post(
+    Authenticated(user): Authenticated,
     State(pool): State<SqlitePool>,
     TypedMultipart(form_values): TypedMultipart<FeedFormValues>,
 ) -> ServerResult<Response> {
     match form_values.try_into_feed_data() {
         Ok(feed_data) => {
             let mut txn = pool.begin().await?;
-            feed_data.create(&mut txn).await?;
+            feed_data.create(&mut txn, user.id).await?;
             txn.commit().await?;
 
             Ok([("HX-Redirect", "/")].into_response())
         }
         Err(errors) => Ok(feed_form(Some(&form_values), true, errors).into_response()),
     }
-}
-
-#[axum::debug_handler(state = AppState)]
-pub async fn test(Authenticated(user): Authenticated) -> ServerResult<Response> {
-    Ok(layout(html!(
-        p {
-            "Hello, "
-            img src=[user.data.icon] width="16" {}
-            " "
-            (user.data.name.as_deref().unwrap_or("Unknown"))
-            "!"
-        }
-    ))
-    .into_response())
 }
 
 #[axum::debug_handler]

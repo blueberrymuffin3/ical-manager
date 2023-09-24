@@ -60,7 +60,6 @@ async fn main() -> anyhow::Result<()> {
         .route("/feed/:id/edit", post(presentation::pages::feed_edit_post))
         .route("/feed/create", get(presentation::pages::feed_create_get))
         .route("/feed/create", post(presentation::pages::feed_create_post))
-        .route("/test", get(presentation::pages::test))
         .nest(LOCATION_LOGIN, presentation::auth::router())
         // API
         .route("/export/:code", get(presentation::pages::export))

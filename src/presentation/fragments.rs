@@ -37,7 +37,7 @@ fn feed_row(id: i64, name: &str, link_code: &str) -> Markup {
                 " Delete"
             }
 
-            input type="text" class="copy-source" data-partial-copy-uri=(format_args!("/export/{link_code}.ical")) readonly {}
+            input type="text" class="copy-source" data-partial-copy-uri=(format_args!("/export/{link_code}.ics")) readonly {}
         }
     })
 }
@@ -126,8 +126,8 @@ impl Display for ApproxDuration {
     }
 }
 
-pub async fn feed_status(pool: &SqlitePool, id: i64) -> anyhow::Result<Markup> {
-    match get_feed_status(pool, id).await {
+pub async fn feed_status(pool: &SqlitePool, user_id: i64, id: i64) -> anyhow::Result<Markup> {
+    match get_feed_status(pool, user_id, id).await {
         Ok(Some((_data, stats))) => Ok(feed_status_result(
             FeedStatus::Ok,
             format_args!(
@@ -143,10 +143,11 @@ pub async fn feed_status(pool: &SqlitePool, id: i64) -> anyhow::Result<Markup> {
 
 async fn get_feed_status(
     pool: &sqlx::Pool<sqlx::Sqlite>,
+    user_id: i64,
     id: i64,
 ) -> Result<Option<(bytes::Bytes, CalendarStats)>, anyhow::Error> {
     let mut txn = pool.begin().await?;
-    let feed = Feed::select_by_id(id, &mut txn).await?;
+    let feed = Feed::select_by_id(user_id, id, &mut txn).await?;
     txn.rollback().await?;
 
     match feed {

@@ -1,4 +1,7 @@
+use icondata::LuIcon;
 use maud::{html, Markup, DOCTYPE};
+
+use crate::{data::user::User, presentation::icon::icon_alt};
 
 pub fn base_layout(content: Markup) -> Markup {
     html! {
@@ -25,12 +28,46 @@ pub fn base_layout(content: Markup) -> Markup {
         }
     }
 }
-pub fn layout(content: Markup) -> Markup {
+
+pub fn layout_no_user(content: Markup) -> Markup {
     base_layout(html!(
         div."medium-container" {
-            h1 {
-                a href="/" {
-                    "iCal Manager"
+            header {
+                h1 {
+                    a href="/" {
+                        "iCal Manager"
+                    }
+                }
+            }
+            (content)
+        }
+    ))
+}
+
+pub fn layout_user(user: &User, content: Markup) -> Markup {
+    let img_url = user
+        .data
+        .icon
+        .as_deref()
+        .unwrap_or("/img/default_profile.svg");
+
+    let name = user.data.name.as_deref().unwrap_or("Unknown");
+
+    base_layout(html!(
+        div."medium-container" {
+            header {
+                h1 {
+                    a href="/" {
+                        "iCal Manager"
+                    }
+                }
+
+                ."user-info" {
+                    span { (name) }
+                    img src=(img_url) {}
+                    button.small-button.danger-button hx-post="/login/logout" {
+                        (icon_alt(LuIcon::LuLogOut, "Logout"))
+                    }
                 }
             }
             (content)

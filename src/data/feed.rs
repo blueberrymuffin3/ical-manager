@@ -39,10 +39,11 @@ pub enum FeedUpdateError {
 }
 
 impl FeedData {
-    pub async fn create(self, txn: &mut Transaction<'_, Sqlite>) -> Result<Feed, FeedUpdateError> {
+    pub async fn create(self, txn: &mut Transaction<'_, Sqlite>, user_id: i64) -> Result<Feed, FeedUpdateError> {
         let link_code = Uuid::new_v4().simple().to_string();
         let id = sqlx::query_scalar!(
-            "INSERT INTO Feed(link_code, name) VALUES (?, ?) RETURNING id",
+            "INSERT INTO Feed(user_id, link_code, name) VALUES (?, ?, ?) RETURNING id",
+            user_id,
             link_code,
             self.name,
         )
@@ -61,10 +62,17 @@ impl FeedData {
 }
 
 impl Feed {
-    pub async fn select(txn: &mut Transaction<'_, Sqlite>) -> anyhow::Result<Vec<Feed>> {
-        let records = sqlx::query_as!(FeedRecord, "SELECT id, link_code, name FROM Feed ORDER BY id")
-            .fetch_all(&mut *txn)
-            .await?;
+    pub async fn select(
+        txn: &mut Transaction<'_, Sqlite>,
+        user_id: i64,
+    ) -> anyhow::Result<Vec<Feed>> {
+        let records = sqlx::query_as!(
+            FeedRecord,
+            "SELECT id, link_code, name FROM Feed WHERE user_id = ? ORDER BY id",
+            user_id
+        )
+        .fetch_all(&mut *txn)
+        .await?;
         let mut vec = Vec::with_capacity(records.len());
 
         for record in records {
@@ -75,12 +83,14 @@ impl Feed {
     }
 
     pub async fn select_by_id(
+        user_id: i64,
         id: i64,
         txn: &mut Transaction<'_, Sqlite>,
     ) -> anyhow::Result<Option<Feed>> {
         let Some(record) = sqlx::query_as!(
             FeedRecord,
-            "SELECT id, link_code, name FROM Feed WHERE id = ?",
+            "SELECT id, link_code, name FROM Feed WHERE user_id = ? AND id = ?",
+            user_id,
             id
         )
         .fetch_optional(&mut *txn)
@@ -129,10 +139,11 @@ impl Feed {
     }
 
     pub async fn delete_by_id(
+        user_id: i64,
         id: i64,
         executor: impl Executor<'_, Database = Sqlite>,
     ) -> sqlx::Result<bool> {
-        Ok(sqlx::query_scalar!("DELETE FROM Feed WHERE id = ?", id)
+        Ok(sqlx::query_scalar!("DELETE FROM Feed WHERE user_id = ? AND id = ? RETURNING id", user_id, id)
             .fetch_optional(executor)
             .await?
             .is_some())
