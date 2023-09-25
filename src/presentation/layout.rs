@@ -45,11 +45,15 @@ pub fn layout_no_user(content: Markup) -> Markup {
 }
 
 pub fn layout_user(user: &User, content: Markup) -> Markup {
-    let img_url = user
-        .data
-        .icon
-        .as_deref()
-        .unwrap_or("/img/default_profile.svg");
+    let image = match user.data.icon.as_deref() {
+        Some(url) => html!(
+            img src=(url)
+                onerror="this.onerror=null;this.src=\"/img/default_profile.svg\"" {}
+        ),
+        None => html!(
+            img src="/img/default_profile.svg" {}
+        ),
+    };
 
     let name = user.data.name.as_deref().unwrap_or("Unknown");
 
@@ -64,7 +68,7 @@ pub fn layout_user(user: &User, content: Markup) -> Markup {
 
                 ."user-info" {
                     span { (name) }
-                    img src=(img_url) {}
+                    (image)
                     button.small-button.danger-button hx-post="/login/logout" {
                         (icon_alt(LuIcon::LuLogOut, "Logout"))
                     }
